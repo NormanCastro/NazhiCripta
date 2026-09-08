@@ -8,16 +8,16 @@ const RACES = {
   tiefling:{name:'Tiefling', bonus:{CAR:2,INT:1}, desc:'Marcados por un pacto ancestral, carismaticos y temidos.'}
 };
 const CLASSES = {
-  guerrero:{name:'Guerrero', hitDie:10, primary:'FUE', desc:'Maestro del combate cuerpo a cuerpo, resistente y letal.', special:'Golpe Firme: una vez por combate, suma +4 a un ataque.'},
-  mago:{name:'Mago', hitDie:6, primary:'INT', desc:'Estudioso de lo arcano, devastador con hechizos.', special:'Dardo Arcano: inflige 2d6 de daño magico ignorando armadura, una vez por combate.'},
-  picaro:{name:'Picaro', hitDie:8, primary:'DES', desc:'Sigiloso, veloz y letal cuando nadie lo espera.', special:'Golpe Furtivo: si es su primer ataque en el combate, duplica el daño.'},
-  clerigo:{name:'Clerigo', hitDie:8, primary:'SAB', desc:'Canaliza poder divino para sanar y proteger.', special:'Palabra Sagrada: cura 2d6+SAB puntos de vida, una vez por combate.'},
-  barbaro:{name:'Barbaro', hitDie:12, primary:'FUE', desc:'Furia desatada; el mas resistente y salvaje en batalla.', special:'Furia: reduce el daño recibido a la mitad durante un turno, una vez por combate.'},
-  explorador:{name:'Explorador', hitDie:10, primary:'DES', desc:'Cazador certero con el arco y conocedor del terreno.', special:'Tiro Certero: un ataque no puede fallar, una vez por combate.'},
-  paladin:{name:'Paladin', hitDie:10, primary:'FUE', desc:'Guerrero sagrado que combate por sus ideales y sana sus propias heridas.', special:'Golpe Sagrado: +4 de daño extra y cura 2d4 de vida al impactar, una vez por combate.'},
-  bardo:{name:'Bardo', hitDie:8, primary:'CAR', desc:'Artista itinerante cuya musica y palabras inspiran y sanan.', special:'Cancion Inspiradora: recupera 1d6+Carisma de vida, una vez por combate.'},
-  druida:{name:'Druida', hitDie:8, primary:'SAB', desc:'Guardian de la naturaleza que canaliza el poder salvaje.', special:'Forma Salvaje: un zarpazo salvaje inflige 2d8 de daño directo, una vez por combate.'},
-  monje:{name:'Monje', hitDie:8, primary:'DES', desc:'Marcial disciplinado que golpea con velocidad y precision.', special:'Golpe Certero: dos golpes veloces que nunca fallan, 2d6+Destreza de daño, una vez por combate.'}
+  guerrero:{name:'Guerrero', hitDie:10, primary:'FUE', weapon:'Espada larga', weaponDie:8, desc:'Maestro del combate cuerpo a cuerpo, resistente y letal.', special:'Golpe Firme: una vez por combate, suma +4 a un ataque.'},
+  mago:{name:'Mago', hitDie:6, primary:'INT', weapon:'Daga', weaponDie:4, desc:'Estudioso de lo arcano, devastador con hechizos.', special:'Dardo Arcano: inflige 2d6 de daño magico ignorando armadura, una vez por combate.'},
+  picaro:{name:'Picaro', hitDie:8, primary:'DES', weapon:'Daga', weaponDie:4, desc:'Sigiloso, veloz y letal cuando nadie lo espera.', special:'Golpe Furtivo: si es su primer ataque en el combate, duplica el daño.'},
+  clerigo:{name:'Clerigo', hitDie:8, primary:'SAB', weapon:'Maza', weaponDie:6, desc:'Canaliza poder divino para sanar y proteger.', special:'Palabra Sagrada: cura 2d6+SAB puntos de vida, una vez por combate.'},
+  barbaro:{name:'Barbaro', hitDie:12, primary:'FUE', weapon:'Hacha de guerra a dos manos', weaponDie:12, desc:'Furia desatada; el mas resistente y salvaje en batalla.', special:'Furia: reduce el daño recibido a la mitad durante un turno, una vez por combate.'},
+  explorador:{name:'Explorador', hitDie:10, primary:'DES', weapon:'Arco largo', weaponDie:8, desc:'Cazador certero con el arco y conocedor del terreno.', special:'Tiro Certero: un ataque no puede fallar, una vez por combate.'},
+  paladin:{name:'Paladin', hitDie:10, primary:'FUE', weapon:'Espada larga', weaponDie:8, desc:'Guerrero sagrado que combate por sus ideales y sana sus propias heridas.', special:'Golpe Sagrado: +4 de daño extra y cura 2d4 de vida al impactar, una vez por combate.'},
+  bardo:{name:'Bardo', hitDie:8, primary:'CAR', weapon:'Espada corta', weaponDie:6, desc:'Artista itinerante cuya musica y palabras inspiran y sanan.', special:'Cancion Inspiradora: recupera 1d6+Carisma de vida, una vez por combate.'},
+  druida:{name:'Druida', hitDie:8, primary:'SAB', weapon:'Baston de druida', weaponDie:6, desc:'Guardian de la naturaleza que canaliza el poder salvaje.', special:'Forma Salvaje: un zarpazo salvaje inflige 2d8 de daño directo, una vez por combate.'},
+  monje:{name:'Monje', hitDie:8, primary:'DES', weapon:'Golpes sin arma', weaponDie:6, desc:'Marcial disciplinado que golpea con velocidad y precision.', special:'Golpe Certero: dos golpes veloces que nunca fallan, 2d6+Destreza de daño, una vez por combate.'}
 };
 const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰', puerta:'🚪' };
 const ABILS = ['FUE','DES','CON','INT','SAB','CAR'];
@@ -89,12 +89,6 @@ document.getElementById('tabs').addEventListener('click', (e)=>{
   document.getElementById('tab-'+tab).classList.remove('hidden');
 });
 
-/* ================= TEMA ================= */
-document.getElementById('themeToggle').addEventListener('click', ()=>{
-  const cur = document.documentElement.getAttribute('data-theme');
-  document.documentElement.setAttribute('data-theme', cur==='dark' ? 'light' : 'dark');
-});
-
 /* ================= CREACIÓN DE PERSONAJE ================= */
 let selRace=null, selClass=null, rolledStats=null, generatedStory='';
 
@@ -120,7 +114,7 @@ function renderClassGrid(){
   Object.entries(CLASSES).forEach(([key,c])=>{
     const div = document.createElement('div');
     div.className='card';
-    div.innerHTML = '<h3>'+c.name+'</h3><p>'+c.desc+'</p><p class="small-note">'+c.special+'</p>';
+    div.innerHTML = '<h3>'+c.name+'</h3><p>'+c.desc+'</p><p class="small-note">⚔️ Arma: '+c.weapon+' (d'+c.weaponDie+' de daño)</p><p class="small-note">'+c.special+'</p>';
     div.addEventListener('click', ()=>{
       selClass=key;
       grid.querySelectorAll('.card').forEach(c2=>c2.classList.remove('selected'));
@@ -202,7 +196,7 @@ document.getElementById('resetCharBtn').addEventListener('click', ()=>{
   ['stepRace','stepClass','stepStats','stepName'].forEach(id=>document.getElementById(id).classList.remove('hidden'));
   document.querySelector('#tab-personaje .panel.center').classList.remove('hidden');
   document.getElementById('sheetPanel').classList.add('hidden');
-  document.getElementById('charBar').classList.add('hidden');
+  updateCharBar();
   updatePublishBlock();
 });
 
@@ -222,15 +216,8 @@ function renderSheet(){
 }
 
 function updateCharBar(){
-  const bar = document.getElementById('charBar');
-  if(!state.race || !state.cls){ bar.classList.add('hidden'); return; }
-  bar.classList.remove('hidden');
-  const c = CLASSES[state.cls]; const r = RACES[state.race];
-  document.getElementById('charBarContent').innerHTML =
-    '<strong>'+state.name+'</strong> - '+r.name+' '+c.name+' - Nv.'+state.level+
-    ' <span>Vida '+state.hp+'/'+state.maxHp+'</span>'+
-    ' <span>CA '+state.ac+'</span>'+
-    ' <span>XP '+state.xp+'/'+state.xpNext+'</span>';
+  // el resumen de personaje ahora vive en la sidebar persistente (charCardPanel),
+  // que se actualiza en vivo desde el estado de la fiesta, no desde este objeto local.
 }
 
 /* ================= TIRADOR DE DADOS ================= */
@@ -274,19 +261,39 @@ function computeAdvantage(kind){
   return 'normal';
 }
 
+const ALT_ABIL_BY_TYPE = { social:'FUE', exploracion:'FUE', trampa:'INT' };
+
+function computeRelevantMod(kind){
+  const p = partyCache;
+  const myChar = p && p.characters[playerId];
+  if(!myChar) return 0;
+  const sc = p.currentScene;
+  const cd = CLASSES[myChar.cls];
+  if(kind==='attack' || kind==='special') return mod(myChar.stats[cd.primary]);
+  if(kind==='flee') return mod(myChar.stats.DES);
+  if(kind==='search_key') return mod(myChar.stats.INT);
+  if(kind==='force_door') return mod(myChar.stats.FUE);
+  if(kind==='check' && sc) return mod(myChar.stats[sc.abil]);
+  if(kind==='check_alt' && sc) return mod(myChar.stats[ALT_ABIL_BY_TYPE[sc.type]||sc.abil]);
+  return 0;
+}
+
 function requestRoll(kind){
   const adv = computeAdvantage(kind);
+  const relevantMod = computeRelevantMod(kind);
   pendingAction = { kind, adv };
   selDie = 20;
   diceTypeGrid.querySelectorAll('button').forEach(x=>x.classList.remove('sel'));
   diceTypeGrid.querySelectorAll('button')[5].classList.add('sel'); // d20 es el 6to boton (index 5)
   document.getElementById('diceQty').value = adv==='normal' ? 1 : 2;
   document.getElementById('diceQty').disabled = true;
+  document.getElementById('diceMod').value = relevantMod;
+  document.getElementById('diceMod').disabled = true;
   diceFab.classList.add('glow');
   dicePanel.classList.remove('hidden');
-  let msg = 'Tirá el D20 para resolver tu accion.';
-  if(adv==='adv') msg = '<span class="roll-highlight">¡Tenés VENTAJA!</span> Se tiran 2d20 y se usa el mayor.';
-  else if(adv==='disadv') msg = '<span style="color:var(--accent);font-weight:bold;">Tenés DESVENTAJA</span> (mal herido). Se tiran 2d20 y se usa el menor.';
+  let msg = 'Tirá el D20 para resolver tu accion. Modificador aplicado: '+fmtMod(relevantMod)+'.';
+  if(adv==='adv') msg = '<span class="roll-highlight">¡Tenés VENTAJA!</span> Se tiran 2d20 y se usa el mayor. Modificador: '+fmtMod(relevantMod)+'.';
+  else if(adv==='disadv') msg = '<span style="color:var(--accent);font-weight:bold;">Tenés DESVENTAJA</span> (mal herido). Se tiran 2d20 y se usa el menor. Modificador: '+fmtMod(relevantMod)+'.';
   document.getElementById('diceResult').innerHTML = '<p>'+msg+'</p>';
   renderAdventure();
 }
@@ -294,6 +301,7 @@ function clearPendingAction(){
   pendingAction = null;
   diceFab.classList.remove('glow');
   document.getElementById('diceQty').disabled = false;
+  document.getElementById('diceMod').disabled = false;
 }
 
 document.getElementById('diceRollBtn').addEventListener('click', ()=>{
@@ -362,6 +370,7 @@ socket.on('state', (party)=>{
   renderPartyRoster();
   updatePublishBlock();
   renderChat();
+  renderCharCard(); // la sidebar de personaje se actualiza siempre, sin importar la pestaña activa
   refreshAdventureTab();
 });
 
@@ -453,18 +462,23 @@ document.getElementById('chatInputAdv').addEventListener('keydown', (e)=>{ if(e.
 
 /* ================= "HABLAR CON EL DM" — reconocimiento de palabras clave (sin IA) ================= */
 const INTENT_KEYWORDS = {
-  attack: ['atacar','ataco','atacá','pego','pegar','golpear','golpeo','pelear','peleo'],
-  special: ['especial','habilidad'],
-  defend: ['defender','defenderme','defiendo','cubrirme','cubro','esconderme','escondo','protegerme','proteger'],
-  usepotion: ['pocion','poción','curarme','curar','beber','tomar pocion'],
-  flee: ['huir','huyo','escapar','escapo','correr','corro','irme','retirarme','retirada'],
-  collect: ['recoger','recojo','agarrar','agarro','tomar','revisar','busco algo'],
-  search_key: ['buscar llave','busco la llave','llave'],
-  force_door: ['forzar','romper','empujar','forzarla'],
-  check: ['intentar','probar','investigar','intento','pruebo','investigo'],
-  check_alt: ['otro enfoque','alternativa','de otra forma','diferente'],
-  skip: ['seguir de largo','ignorar','avanzar','pasar de largo','evitar','no arriesgarme','sigo']
+  attack: ['atacar','ataco','atacá','ataque','pego','pegar','pegarle','golpear','golpeo','pelear','peleo','le doy','embisto','embestir','le pego con todo','voy al frente','cargo contra el'],
+  special: ['especial','habilidad','uso mi habilidad','uso mi especial','hechizo','lanzo un hechizo','uso mi poder','uso mi don'],
+  defend: ['defender','defenderme','defiendo','cubrirme','cubro','esconderme','escondo','protegerme','proteger','me cubro','me pongo a cubierto','me resguardo','bloqueo','levanto el escudo','me quedo atras cubriendome'],
+  usepotion: ['pocion','poción','curarme','curar','beber','tomar pocion','bebo la pocion','me curo','tomo mi pocion'],
+  flee: ['huir','huyo','escapar','escapo','correr','corro','irme','retirarme','retirada','me voy','salgo corriendo','abandono la pelea','no quiero pelear','mejor me retiro'],
+  collect: ['recoger','recojo','agarrar','agarro','tomar','revisar','busco algo','lo agarro','voy a buscarlo','me lo llevo','junto lo que brilla'],
+  search_key: ['buscar llave','busco la llave','llave','busco por una llave','reviso si hay una llave','trato de encontrar la llave'],
+  force_door: ['forzar','romper','empujar','forzarla','la empujo','le doy una patada','trato de romperla','la fuerzo con el hombro'],
+  check: ['intentar','probar','investigar','intento','pruebo','investigo','reviso','me fijo','presto atencion','analizo','voy a analizar','quiero investigar','me acerco a mirar','examino el lugar'],
+  check_alt: ['otro enfoque','alternativa','de otra forma','diferente','de otra manera','probar distinto','con otra estrategia','a mi manera'],
+  skip: ['seguir de largo','ignorar','avanzar','pasar de largo','evitar','no arriesgarme','sigo','prefiero retroceder','retrocedo','no quiero arriesgarme','mejor no','paso de esto','sigamos caminando','continuamos'],
+  choose_path_A: ['izquierda','izquierdo','pasillo izquierdo','puerta izquierda','voy por la izquierda','tomo la izquierda','bordear','bordeo el muro','junto al muro','voy por el muro'],
+  choose_path_B: ['derecha','derecho','pasillo derecho','puerta derecha','voy por la derecha','tomo la derecha','centro','cruzar','cruzo por el centro','voy por el centro'],
+  use_torch: ['antorcha','uso mi antorcha','uso la antorcha','ilumino','prendo la antorcha','saco la antorcha'],
+  use_rope: ['cuerda','uso mi cuerda','uso la cuerda','ato la cuerda','aseguro con la cuerda']
 };
+const RATIONS_KEYWORDS = ['raciones','como mis raciones','como algo','comer','me como algo','saco mis raciones'];
 function normalizeText(s){
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 }
@@ -478,28 +492,98 @@ function getActivePlayerId(p){
   const q = (p.turnQueue && p.turnQueue.length) ? p.turnQueue : Object.keys(p.characters||{}).sort();
   return q.length ? q[0] : null;
 }
+function findNamedTarget(norm, excludeSelf){
+  const p = partyCache;
+  const chars = (p && p.characters) || {};
+  for(const id of Object.keys(chars)){
+    if(excludeSelf && id===playerId) continue;
+    const c = chars[id];
+    if(!c || !c.name) continue;
+    if(norm.includes(normalizeText(c.name))) return id;
+  }
+  return null;
+}
+
 function tryMatchIntent(text){
   clearIntentHint();
   const p = partyCache;
-  if(!p || !p.currentScene) return;
+  const hint = document.getElementById('intentHint');
+  const norm0 = normalizeText(text);
+  const myChar0 = p && p.characters[playerId];
+
+  // "comer raciones" funciona en cualquier momento, no depende de que haya una escena activa
+  if(myChar0 && RATIONS_KEYWORDS.some(kw=>norm0.includes(normalizeText(kw)))){
+    if(!myChar0.inventory.includes('Raciones de viaje')){
+      hint.textContent = 'ℹ️ No tenes raciones de viaje.';
+    } else if(myChar0.hp<=0){
+      hint.textContent = 'ℹ️ Estas caido, no podes comer ahora.';
+    } else if(myChar0.hp>=myChar0.maxHp){
+      hint.textContent = 'ℹ️ Ya estas con la vida al maximo.';
+    } else {
+      sendEatRations();
+      hint.textContent = '✅ Hecho: comes tus raciones de viaje.';
+    }
+    hint.classList.remove('hidden');
+    return;
+  }
+
+  if(!p || !p.currentScene){
+    hint.textContent = 'ℹ️ No hay ninguna escena activa ahora mismo para interpretar acciones.';
+    hint.classList.remove('hidden');
+    return;
+  }
+  const sc = p.currentScene;
+  const isCombat = sc.type==='combate';
   const activePlayer = getActivePlayerId(p);
-  if(activePlayer !== playerId) return; // solo tiene sentido si es tu turno
+  // en combate solo se interpreta en tu turno; fuera de combate, cualquiera de la fiesta puede actuar
+  if(isCombat && activePlayer !== playerId){
+    const activeName = p.characters[activePlayer] ? p.characters[activePlayer].name : 'otro jugador';
+    hint.textContent = 'ℹ️ No es tu turno de combate (le toca a '+activeName+') — tu mensaje se mando al chat, pero no interpreto acciones fuera de tu turno en combate.';
+    hint.classList.remove('hidden');
+    return;
+  }
+  const myChar = p.characters[playerId];
+  if(!myChar){
+    hint.textContent = 'ℹ️ Todavia no tenes personaje publicado en esta fiesta.';
+    hint.classList.remove('hidden');
+    return;
+  }
   const norm = normalizeText(text);
   const availableButtons = Array.from(document.querySelectorAll('#choices .choice-btn:not(:disabled)'));
-  if(!availableButtons.length) return;
+  if(!availableButtons.length){
+    hint.textContent = 'ℹ️ Hay una escena activa, pero todavia no hay opciones para elegir.';
+    hint.classList.remove('hidden');
+    return;
+  }
 
   for(const btn of availableButtons){
     const kind = btn.dataset.kind;
     const keywords = INTENT_KEYWORDS[kind];
     if(!keywords) continue;
     if(keywords.some(kw => norm.includes(normalizeText(kw)))){
-      btn.classList.add('choice-hint');
-      const hint = document.getElementById('intentHint');
-      hint.textContent = '💡 Creo que te referís a: "'+btn.textContent+'". Tocá el botón resaltado para confirmarlo.';
+      // acciones que pueden apuntar a un aliado nombrado: se ejecutan directo, sin pasar por el selector de objetivo
+      if(kind==='special' && isCombat && HEAL_SPECIAL_CLASSES.includes(myChar.cls)){
+        const target = findNamedTarget(norm, false) || playerId;
+        sendActionWithTarget('special', target);
+        hint.textContent = '✅ Hecho: '+(target===playerId?'te curas a vos mismo/a':'curas a '+p.characters[target].name)+'.';
+      } else if(kind==='usepotion' && isCombat){
+        const target = findNamedTarget(norm, false) || playerId;
+        sendActionWithTarget('usepotion', target);
+        hint.textContent = '✅ Hecho: '+(target===playerId?'usas la pocion en vos mismo/a':'le das la pocion a '+p.characters[target].name)+'.';
+      } else if(kind==='choose_path_A' || kind==='choose_path_B'){
+        sendActionWithTarget('choose_path', kind==='choose_path_A'?'A':'B');
+        hint.textContent = '✅ Hecho: '+btn.textContent;
+      } else {
+        // el resto: ejecuta directo tocando la accion real del boton (si pide tirada, el D20 se ilumina igual)
+        btn.click();
+        hint.textContent = '✅ Hecho: '+btn.textContent;
+      }
       hint.classList.remove('hidden');
       return;
     }
   }
+  hint.textContent = '🤔 No reconocí ninguna accion en eso. Probá con palabras como "atacar", "huir", "defenderme"...';
+  hint.classList.remove('hidden');
 }
 function clearIntentHint(){
   document.querySelectorAll('#choices .choice-btn.choice-hint').forEach(b=>b.classList.remove('choice-hint'));
@@ -548,15 +632,20 @@ function renderQuickPanel(){
   const cd = CLASSES[c.cls];
   if(quickPanelMode==='habilidades'){
     const statsHtml = ABILS.map(a=>'<div class="stat-row"><span>'+ABIL_LABEL[a]+'</span><span class="stat-val">'+c.stats[a]+' ('+fmtMod(mod(c.stats[a]))+')</span></div>').join('');
-    panel.innerHTML = '<h4 style="margin:0 0 6px 0;">Habilidad especial</h4><p class="small-note">'+cd.special+'</p>'+
+    panel.innerHTML = '<h4 style="margin:0 0 6px 0;">Arma</h4><p class="small-note">'+cd.weapon+' — daño d'+cd.weaponDie+'</p>'+
+      '<h4 style="margin:10px 0 4px 0;">Habilidad especial</h4><p class="small-note">'+cd.special+'</p>'+
       '<h4 style="margin:10px 0 4px 0;">Atributos</h4>'+statsHtml;
   } else if(quickPanelMode==='inventario'){
+    const hasRations = c.inventory.includes('Raciones de viaje');
+    const canEat = hasRations && c.hp>0 && c.hp<c.maxHp;
     panel.innerHTML = '<h4 style="margin:0 0 6px 0;">Inventario</h4>'+
-      (c.inventory.length ? '<ul style="margin:0;padding-left:18px;">'+c.inventory.map(i=>'<li class="small-note">'+i+'</li>').join('')+'</ul>' : '<p class="small-note">(vacio)</p>');
+      (c.inventory.length ? '<ul style="margin:0;padding-left:18px;">'+c.inventory.map(i=>'<li class="small-note">'+i+'</li>').join('')+'</ul>' : '<p class="small-note">(vacio)</p>')+
+      (hasRations ? '<button class="action gold" style="margin-top:8px;" onclick="sendEatRations()"'+(canEat?'':' disabled')+'>Comer raciones (recupera algo de vida)</button>' : '')+
+      '<p class="small-note" style="margin-top:6px;">La Antorcha y la Cuerda se pueden usar directamente durante escenas de exploracion o trampas, cuando aparezcan como opcion.</p>';
   } else if(quickPanelMode==='hoja'){
     const statsHtml = ABILS.map(a=>'<div class="stat-row"><span>'+ABIL_LABEL[a]+'</span><span class="stat-val">'+c.stats[a]+' ('+fmtMod(mod(c.stats[a]))+')</span></div>').join('');
     panel.innerHTML = '<h4 style="margin:0 0 4px 0;">'+c.name+' <span class="badge">Nivel '+c.level+'</span></h4>'+
-      '<p class="small-note" style="margin:0 0 8px 0;">'+RACES[c.race].name+' — '+cd.name+'</p>'+
+      '<p class="small-note" style="margin:0 0 8px 0;">'+RACES[c.race].name+' — '+cd.name+' — '+cd.weapon+' (d'+cd.weaponDie+')</p>'+
       '<div class="stat-row"><span>Vida</span><span class="stat-val">'+c.hp+' / '+c.maxHp+'</span></div>'+
       '<div class="stat-row"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
       '<div class="stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>'+
@@ -678,8 +767,8 @@ function renderRoomMap(){
     el.style.top = pt.y+'%';
     el.style.borderColor = isActive ? 'var(--accent-3)' : colorForPlayer(id);
     el.style.background = isActive
-      ? 'radial-gradient(circle, var(--accent-3), #a3781f)'
-      : 'radial-gradient(circle, '+colorForPlayer(id)+', #241a08)';
+      ? 'radial-gradient(circle, var(--accent-3), #0f3d22)'
+      : 'radial-gradient(circle, '+colorForPlayer(id)+', #08130c)';
     el.classList.toggle('map-token-active', isActive);
     el.innerHTML = '<span>'+(isActive ? (ROOM_ICON[c.lastRoomType]||'🧭') : (c.name||'?').charAt(0).toUpperCase())+'</span>';
     el.title = c.name+' — Sala '+(c.mapPos+1)+': '+pt.label+(c.lastRoomType?(' ('+(ROOM_NAME[c.lastRoomType]||'')+')'):'');
@@ -692,7 +781,7 @@ const CLASS_ICON = {
 };
 
 function hpBarColor(pct, downed){
-  if(downed) return '#5c4c3a';
+  if(downed) return '#3a4a3f';
   return pct>50 ? 'var(--accent-2)' : (pct>20 ? 'var(--accent-3)' : 'var(--accent)');
 }
 
@@ -716,12 +805,13 @@ function renderCharCard(){
       '<span><span class="dot" style="background:var(--accent-2);"></span>Especial: '+(specialReady?'Lista':'Usada')+'</span>'+
     '</div>'+
     '<div class="stat-row-mini stat-row" style="margin-top:8px;"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
-    '<div class="stat-row-mini stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>';
+    '<div class="stat-row-mini stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>'+
+    (downed ? '<p class="small-note" style="color:var(--accent);margin-top:8px;">⚠️ Estas caido/a e inconsciente. No podes actuar hasta que un aliado te reanime con una pocion o con curacion.</p>' : '');
 }
 
 function ringStyle(hpPct, specialPct, downed){
   if(downed){
-    return 'background: conic-gradient(from 0deg, #5c4c3a 0deg 360deg);';
+    return 'background: conic-gradient(from 0deg, #3a4a3f 0deg 360deg);';
   }
   const blueEnd = 180 * (specialPct/100);
   const greenEnd = 180 + 180 * (hpPct/100);
@@ -740,18 +830,28 @@ function renderPartyCard(){
   const chars = (p && p.characters) || {};
   const ids = Object.keys(chars).filter(id=>id!==playerId);
   if(!ids.length){ panel.innerHTML = '<h4 style="margin:0;">Fiesta</h4><p class="small-note">Nadie mas se unio todavia.</p>'; return; }
+  const myChar = chars[playerId];
+  const iAmDowned = myChar && myChar.hp<=0;
+  const iHavePotion = myChar && myChar.inventory && myChar.inventory.includes('Pocion menor de curacion');
   panel.innerHTML = '<h4 style="margin:0 0 10px 0;">Fiesta</h4>' + ids.map(id=>{
     const c = chars[id];
     const pct = Math.max(0, Math.min(100, Math.round((c.hp/c.maxHp)*100)));
     const downed = c.hp<=0;
+    const canRevive = downed && !iAmDowned && iHavePotion;
     return '<div class="party-member-row">'+
       '<div class="avatar-ring small" style="'+ringStyle(pct, 100, downed)+'"><div class="avatar-ring-inner">'+(CLASS_ICON[c.cls]||'🧙')+'</div></div>'+
       '<div class="pm-info">'+
         '<div class="pm-name"><span>'+c.name+'</span><span class="clevel">Nv.'+c.level+'</span></div>'+
-        '<div class="small-note">'+(downed?'Caido':(c.hp+' / '+c.maxHp+' PV'))+'</div>'+
+        '<div class="small-note">'+(downed?'Caido — inconsciente':(c.hp+' / '+c.maxHp+' PV'))+'</div>'+
+        (canRevive ? '<button class="action gold" style="margin-top:4px;padding:4px 10px;font-size:0.75rem;" onclick="sendRevive(\''+id+'\')">Reanimar con pocion</button>' : '')+
+        (downed && !canRevive && !iAmDowned ? '<div class="small-note" style="color:var(--accent);">Necesita una pocion o curacion para reanimarse.</div>' : '')+
       '</div>'+
     '</div>';
   }).join('');
+}
+function sendRevive(targetId){
+  if(!currentCode) return;
+  socket.emit('revive', {code: currentCode, playerId, targetId});
 }
 
 function renderAdventure(){
@@ -775,11 +875,17 @@ function renderAdventure(){
   }
 
   const sc = p.currentScene;
+  const isCombat = sc.type==='combate';
+  // fuera de combate, cualquier miembro de la fiesta puede resolver la escena (el grupo decide en conjunto)
+  const myChar = p.characters[playerId];
+  const inGroup = !sc.groupMembers || sc.groupMembers.includes(playerId);
+  const canAct = isCombat ? myTurn : (!!myChar && inGroup);
+
   document.getElementById('sceneTitle').textContent = sc.title || '-';
   document.getElementById('sceneText').textContent = sc.text || '';
-  document.getElementById('actorNote').textContent = myTurn
-    ? 'Es tu turno de decidir.'
-    : ('Esta escena la esta jugando '+(activeName||'otro jugador')+'. La estas viendo en vivo.');
+  document.getElementById('actorNote').textContent = isCombat
+    ? (myTurn ? 'Es tu turno de decidir.' : ('Esta escena la esta jugando '+(activeName||'otro jugador')+'. La estas viendo en vivo.'))
+    : (inGroup ? 'Cualquiera de la fiesta puede responder a esto — hablenlo por el chat si quieren.' : 'Tu personaje esta en otra parte de la cripta ahora mismo — esta escena no es tuya.');
   applyViewMode();
   renderSceneImage(sc);
 
@@ -789,7 +895,7 @@ function renderAdventure(){
   choicesDiv.innerHTML = '';
   clearIntentHint();
 
-  if(sc.type==='combate' && sc.enemy){
+  if(isCombat && sc.enemy){
     enemyBlock.classList.remove('hidden');
     document.getElementById('enemyName').textContent = sc.enemy.name;
     document.getElementById('enemyHpText').textContent = Math.max(0,sc.enemy.hp)+' / '+sc.enemy.maxHp+' PV';
@@ -798,7 +904,7 @@ function renderAdventure(){
     enemyBlock.classList.add('hidden');
   }
 
-  if(!myTurn){
+  if(!canAct){
     rollPrompt.classList.add('hidden');
     return;
   }
@@ -814,16 +920,19 @@ function renderAdventure(){
   }
   rollPrompt.classList.add('hidden');
 
-  const myChar = p.characters[playerId];
-
-  if(sc.type==='combate' && sc.enemy){
+  if(isCombat && sc.enemy){
     const cd = CLASSES[myChar.cls];
     const hasPotion = myChar.inventory.includes('Pocion menor de curacion');
+    const HEAL_CLASSES = ['clerigo','bardo'];
     addChoice('Atacar', ()=>sendAction('attack'), false, 'attack');
     const specialUsed = !!(sc.usedSpecialBy && sc.usedSpecialBy.includes(playerId));
-    addChoice(cd.special.split(':')[0], ()=>sendAction('special'), specialUsed, 'special');
+    if(HEAL_CLASSES.includes(myChar.cls)){
+      addChoice(cd.special.split(':')[0], ()=>showHealTargetPicker(), specialUsed, 'special');
+    } else {
+      addChoice(cd.special.split(':')[0], ()=>sendAction('special'), specialUsed, 'special');
+    }
     addChoice('Defenderse (reduce el daño que recibis)', ()=>sendAction('defend'), false, 'defend');
-    addChoice('Beber pocion de curacion', ()=>sendAction('usepotion'), !hasPotion, 'usepotion');
+    addChoice('Usar pocion de curacion', ()=>showPotionTargetPicker(), !hasPotion, 'usepotion');
     addChoice('Intentar huir', ()=>sendAction('flee'), false, 'flee');
   } else if(sc.type==='hallazgo'){
     addChoice('Recoger el hallazgo', ()=>sendAction('collect'), false, 'collect');
@@ -832,11 +941,77 @@ function renderAdventure(){
     addChoice('Buscar la llave escondida', ()=>sendAction('search_key'), false, 'search_key');
     addChoice('Forzar la puerta', ()=>sendAction('force_door'), false, 'force_door');
     addChoice('Tomar otro camino', ()=>sendAction('skip'), false, 'skip');
+  } else if(sc.type==='bifurcacion'){
+    if(sc.choices && sc.choices[playerId]){
+      const chosen = sc.paths.find(p2=>p2.id===sc.choices[playerId]);
+      const waitingOn = (sc.forkMembers||[]).filter(id=>!sc.choices[id]).map(id=>p.characters[id]?p.characters[id].name:id);
+      choicesDiv.innerHTML = '<p class="small-note">Elegiste: <strong>'+(chosen?chosen.label:'')+'</strong>. Esperando a que elijan: '+(waitingOn.length?waitingOn.join(', '):'nadie mas, ya deberian estar avanzando...')+'</p>';
+    } else {
+      (sc.paths||[]).forEach(pathOpt=>{
+        addChoice(pathOpt.label, ()=>sendActionWithTarget('choose_path', pathOpt.id), false, pathOpt.id==='A'?'choose_path_A':'choose_path_B');
+      });
+    }
   } else {
-    addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+sc.dc+')', ()=>sendAction('check'), false, 'check');
-    addChoice('Probar otro enfoque (mas dificil)', ()=>sendAction('check_alt'), false, 'check_alt');
+    const USABLE_ITEMS_CLIENT = {
+      'Antorcha': {scenes:['exploracion','trampa'], label:'Usar la antorcha para ver mejor'},
+      'Cuerda (15m)': {scenes:['exploracion'], label:'Usar la cuerda para asegurar el paso'}
+    };
+    if(!sc.dcReduction){
+      Object.entries(USABLE_ITEMS_CLIENT).forEach(([itemName, def])=>{
+        if(def.scenes.includes(sc.type) && myChar.inventory.includes(itemName)){
+          const kind = itemName==='Antorcha' ? 'use_torch' : 'use_rope';
+          addChoice(def.label, ()=>sendUseItem(itemName), false, kind);
+        }
+      });
+    } else {
+      addChoice('(Ya usaste algo para ayudarte aca — la dificultad ya bajo)', ()=>{}, true, 'item_used');
+    }
+    addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+Math.max(5,sc.dc-(sc.dcReduction||0))+')', ()=>sendAction('check'), false, 'check');
+    addChoice('Probar otro enfoque (mas dificil, CD '+Math.max(5,sc.dc+2-(sc.dcReduction||0))+')', ()=>sendAction('check_alt'), false, 'check_alt');
     addChoice('Evitar la situacion', ()=>sendAction('skip'), false, 'skip');
   }
+}
+
+function sendUseItem(itemName){
+  if(!currentCode) return;
+  socket.emit('action', {code: currentCode, playerId, kind:'use_item', itemName});
+}
+function sendEatRations(){
+  if(!currentCode) return;
+  socket.emit('eat_rations', {code: currentCode, playerId});
+}
+
+function showHealTargetPicker(){
+  const p = partyCache;
+  const sc = p.currentScene;
+  const choicesDiv = document.getElementById('choices');
+  choicesDiv.innerHTML = '';
+  const presentIds = (sc.combatOrder||[]).filter(e=>e.type==='player' && !(sc.fledIds||[]).includes(e.id)).map(e=>e.id);
+  presentIds.forEach(id=>{
+    const c = p.characters[id];
+    if(!c) return;
+    const label = (id===playerId ? 'Curarme a mi mismo' : 'Curar a '+c.name) + ' ('+c.hp+'/'+c.maxHp+' PV)' + (c.hp<=0?' — CAIDO':'');
+    addChoice(label, ()=>sendActionWithTarget('special', id));
+  });
+  addChoice('Cancelar', ()=>renderAdventure());
+}
+function showPotionTargetPicker(){
+  const p = partyCache;
+  const sc = p.currentScene;
+  const choicesDiv = document.getElementById('choices');
+  choicesDiv.innerHTML = '';
+  const presentIds = (sc.combatOrder||[]).filter(e=>e.type==='player' && !(sc.fledIds||[]).includes(e.id)).map(e=>e.id);
+  presentIds.forEach(id=>{
+    const c = p.characters[id];
+    if(!c) return;
+    const label = (id===playerId ? 'Bebermela yo' : 'Darsela a '+c.name) + ' ('+c.hp+'/'+c.maxHp+' PV)' + (c.hp<=0?' — CAIDO, se reanima':'');
+    addChoice(label, ()=>sendActionWithTarget('usepotion', id));
+  });
+  addChoice('Cancelar', ()=>renderAdventure());
+}
+function sendActionWithTarget(kind, targetId){
+  if(!currentCode) return;
+  socket.emit('action', {code: currentCode, playerId, kind, targetId});
 }
 
 function renderSceneImage(sc){
@@ -917,8 +1092,18 @@ function addChoice(label, fn, disabled, kind){
   document.getElementById('choices').appendChild(btn);
 }
 
+const NO_ROLL_SPECIAL_CLASSES = ['mago','druida','barbaro'];
+const HEAL_SPECIAL_CLASSES = ['clerigo','bardo'];
+
 function sendAction(kind){
   if(!currentCode) return;
+  if(kind==='special'){
+    const myChar = partyCache && partyCache.characters[playerId];
+    if(myChar && NO_ROLL_SPECIAL_CLASSES.includes(myChar.cls)){
+      socket.emit('action', {code: currentCode, playerId, kind});
+      return;
+    }
+  }
   if(ROLL_REQUIRED_KINDS.includes(kind)){
     requestRoll(kind);
     return;

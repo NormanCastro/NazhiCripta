@@ -12,16 +12,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 /* ===================== DATOS DE JUEGO (autoritativos, en el servidor) ===================== */
 
 const CLASSES = {
-  guerrero:{ hitDie:10, primary:'FUE', specialName:'Golpe Firme' },
-  mago:{ hitDie:6, primary:'INT', specialName:'Dardo Arcano' },
-  picaro:{ hitDie:8, primary:'DES', specialName:'Golpe Furtivo' },
-  clerigo:{ hitDie:8, primary:'SAB', specialName:'Palabra Sagrada' },
-  barbaro:{ hitDie:12, primary:'FUE', specialName:'Furia' },
-  explorador:{ hitDie:10, primary:'DES', specialName:'Tiro Certero' },
-  paladin:{ hitDie:10, primary:'FUE', specialName:'Golpe Sagrado' },
-  bardo:{ hitDie:8, primary:'CAR', specialName:'Cancion Inspiradora' },
-  druida:{ hitDie:8, primary:'SAB', specialName:'Forma Salvaje' },
-  monje:{ hitDie:8, primary:'DES', specialName:'Golpe Certero' }
+  guerrero:{ hitDie:10, primary:'FUE', specialName:'Golpe Firme', weapon:'Espada larga', weaponDie:8 },
+  mago:{ hitDie:6, primary:'INT', specialName:'Dardo Arcano', weapon:'Daga', weaponDie:4 },
+  picaro:{ hitDie:8, primary:'DES', specialName:'Golpe Furtivo', weapon:'Daga', weaponDie:4 },
+  clerigo:{ hitDie:8, primary:'SAB', specialName:'Palabra Sagrada', weapon:'Maza', weaponDie:6 },
+  barbaro:{ hitDie:12, primary:'FUE', specialName:'Furia', weapon:'Hacha de guerra a dos manos', weaponDie:12 },
+  explorador:{ hitDie:10, primary:'DES', specialName:'Tiro Certero', weapon:'Arco largo', weaponDie:8 },
+  paladin:{ hitDie:10, primary:'FUE', specialName:'Golpe Sagrado', weapon:'Espada larga', weaponDie:8 },
+  bardo:{ hitDie:8, primary:'CAR', specialName:'Cancion Inspiradora', weapon:'Espada corta', weaponDie:6 },
+  druida:{ hitDie:8, primary:'SAB', specialName:'Forma Salvaje', weapon:'Baston de druida', weaponDie:6 },
+  monje:{ hitDie:8, primary:'DES', specialName:'Golpe Certero', weapon:'Golpes sin arma', weaponDie:6 }
 };
 
 const ALT_ABIL_BY_TYPE = { social:'FUE', exploracion:'FUE', trampa:'INT' };
@@ -62,7 +62,19 @@ const TRAP_SCENES = [
    success:'Abris el cofre con destreza, evitando la aguja, y encontras algo de valor.', fail:'La aguja te pincha; el veneno te resta algo de vida.'}
 ];
 const ITEMS = ['Pocion menor de curacion','Moneda de oro antigua','Gema pequeña','Pergamino ilegible','Daga ornamentada','Amuleto desgastado'];
+const USABLE_SCENE_ITEMS = {
+  'Antorcha': { scenes:['exploracion','trampa'], bonus:3, desc:'ilumina cada rincon del lugar' },
+  'Cuerda (15m)': { scenes:['exploracion'], bonus:3, desc:'asegura el paso con la cuerda' }
+};
 const SCENE_TYPES = ['combate','social','exploracion','trampa','hallazgo','puerta'];
+const FORK_SCENES = [
+  {title:'El camino se divide', text:'El pasillo termina en una bifurcacion: dos corredores oscuros se abren ante ustedes. Van a tener que separarse para cubrir ambos.',
+   paths:[{id:'A', label:'Tomar el pasillo izquierdo'},{id:'B', label:'Tomar el pasillo derecho'}]},
+  {title:'Dos puertas identicas', text:'Encuentran dos puertas identicas, una al lado de la otra, ambas entreabiertas. No hay forma de saber que hay detras de cada una sin separarse.',
+   paths:[{id:'A', label:'Entrar por la puerta de la izquierda'},{id:'B', label:'Entrar por la puerta de la derecha'}]},
+  {title:'La sala se bifurca', text:'Una grieta profunda divide la sala en dos mitades. Se puede bordear por el muro, o cruzar directo por el centro.',
+   paths:[{id:'A', label:'Bordear junto al muro'},{id:'B', label:'Cruzar por el centro'}]}
+];
 // rooms del mapa (indice 0-based) donde es mas probable toparse con un guardia armado
 const GUARD_ROOM_INDEXES = [1, 9]; // 1 = Vestibulo de Guardianes, 9 = Celdas
 
@@ -117,47 +129,47 @@ function pushLog(party, kind, text){
 /* ===================== NARRADOR (Dungeon Master por reglas, sin IA real) ===================== */
 const DM_LINES = {
   combate: [
-    'El Dungeon Master alza una ceja: algo se mueve en las sombras. Tirá iniciativa.',
-    'Sentís un escalofrío. El DM sonrie: "Preparate, esto se pone interesante." Tirá iniciativa.',
-    'El aire se vuelve tenso. El DM susurra: "Tirá iniciativa antes de que sea tarde."',
-    'El DM golpea la mesa con dos dedos: "Combate. Ya sabes que hacer: tirá iniciativa."'
+    'El aire se enrarece de golpe. Algo se mueve entre las sombras al fondo de la sala, y el sonido de metal raspando piedra les eriza la piel a todos. El Dungeon Master alza una ceja: "Esto no va a resolverse hablando. Que cada uno tire su propia iniciativa."',
+    'Un gruñido bajo retumba entre las paredes humedas. El DM deja la lapicera sobre la mesa y sonrie apenas: "Preparense. Esto se pone interesante." Cada integrante de la fiesta debe tirar su iniciativa por separado.',
+    'Sin previo aviso, algo salta desde la oscuridad. El DM susurra, casi disfrutandolo: "Tiren iniciativa antes de que sea tarde — el orden de turnos va a depender de quien reaccione mas rapido."',
+    'El DM golpea la mesa con dos dedos, marcando el ritmo: "Combate. Cada uno de ustedes tira su propio dado de iniciativa (d20 mas modificador de Destreza), y el orden queda armado segun el resultado."'
   ],
   social: [
-    'El DM te mira por encima de la pantalla: "Alguien quiere hablar con vos. ¿Como lo encaras?"',
-    'Frente a vos hay alguien con quien podrias negociar. El DM espera tu decision.',
-    'El DM sonrie con picardia: "Las palabras tambien son un arma. Usalas bien."'
+    'Alguien se acerca desde las sombras de la sala, con un gesto que podria ser amistoso o no. El DM se acomoda los lentes: "Tienen una decision que tomar como grupo — ¿quien de ustedes quiere encargarse de hablar con esta persona? Cualquiera puede intentarlo."',
+    'Frente al grupo hay alguien con quien podrian negociar, convencer, o incluso intimidar. El DM espera, mirando a todos por igual: "No hace falta que sea quien esta explorando ahora — cualquiera de la fiesta puede tomar la palabra, solo digan que quieren hacer."',
+    'El ambiente se tensa apenas por un instante; hay una oportunidad de dialogo antes de que las cosas se compliquen. El DM sonrie con picardia: "Las palabras tambien son un arma. ¿Alguien del grupo quiere intentar usarlas?"'
   ],
   exploracion: [
-    'El DM describe el entorno con cuidado: hay algo que requiere tu atencion.',
-    '"Presta atencion a los detalles", dice el DM. "Este lugar esconde algo."',
-    'El DM entrecierra los ojos mientras narra: el ambiente se siente cargado de historia.'
+    'El DM describe el entorno con cuidado, deteniendose en cada detalle: hay algo aqui que merece atencion, aunque no salta a la vista de inmediato. "Cualquiera de ustedes puede intentar investigar mas de cerca."',
+    '"Presten atencion a los detalles", dice el DM, bajando la voz como si el lugar mismo pudiera escuchar. "Este sitio esconde algo, y no hace falta que sea siempre la misma persona quien lo busque."',
+    'El DM entrecierra los ojos mientras narra: el ambiente se siente cargado de historia, de pasos que caminaron ahi mucho antes que ustedes. "¿Alguno quiere detenerse a mirar con mas cuidado?"'
   ],
   trampa: [
-    'El DM entrecierra los ojos: "Cuidado donde pisas."',
-    'Algo no se siente bien en esta sala. El DM te lo advierte con la mirada.',
-    'El DM sonrie de costado: "Esto podria salir mal si no tenes cuidado."'
+    'El DM entrecierra los ojos y baja el tono: "Cuidado donde pisan. Algo en esta sala no esta bien, y cualquiera del grupo podria notarlo si presta atencion."',
+    'Un silencio incomodo se instala en la sala; algo aqui no se siente natural. El DM lo advierte con la mirada, sin apurar a nadie en particular: "Quien quiera arriesgarse a revisar, que lo diga."',
+    'El DM sonrie de costado, casi con lastima anticipada: "Esto podria salir mal si no tienen cuidado. ¿Alguien se anima a intentarlo?"'
   ],
   hallazgo: [
-    'El DM señala un rincon: "Podria haber algo de valor ahi."',
-    'El DM se queda callado un segundo, dejando que la curiosidad haga su trabajo.'
+    'El DM señala un rincon de la sala, donde algo brilla apenas entre los escombros: "Podria haber algo de valor ahi. Cualquiera puede ir a revisar, no hace falta turnarse."',
+    'El DM se queda callado un segundo, dejando que la curiosidad del grupo haga su trabajo. "Alguien va a tener que decidirse a mirar mas de cerca."'
   ],
   puerta: [
-    'El DM golpea la mesa: "Una puerta cerrada. ¿Como la resolves?"',
-    'El DM te mira fijo: "Llave, fuerza, u otro camino. Vos decidis."'
+    'El grupo llega frente a una puerta pesada, cerrada con algo mas que una simple traba. El DM golpea la mesa: "Tienen opciones: buscar una llave escondida, forzarla entre todos, o tomar otro camino. Discutanlo — cualquiera puede decidir que hacer."',
+    'La puerta no se ve dispuesta a ceder facilmente. El DM los mira a todos por igual: "Llave, fuerza, o retirada. No importa quien de ustedes lo intente, la decision es del grupo."'
   ],
   decision: [
-    '¿Que haces? ¿Avanzas con cautela, te escondes, o atacas directo?',
-    'El DM espera: ¿tu personaje actua con cabeza fria o se lanza de lleno?',
-    'Tenes la palabra. ¿Como reacciona tu personaje ante esto?'
+    '¿Que hacen? ¿Avanzan con cautela, se quedan atras, o se lanzan de lleno? Cualquiera de ustedes puede responder.',
+    'El DM espera, recorriendo la mesa con la mirada: ¿el grupo actua con cabeza fria, o alguien se anima a arriesgarse?',
+    'Tienen la palabra. ¿Como reacciona la fiesta ante esto? No hace falta que sea siempre la misma persona quien decida.'
   ],
   victoria: [
-    'El DM asiente, satisfecho: "Bien hecho, aventurero."',
-    '"Impresionante", murmura el DM mientras anota algo en sus notas.',
-    'El DM sonrie: "Uno menos. La cripta sigue esperando."'
+    'El enemigo cae y por un momento solo se escucha la respiracion agitada del grupo. El DM asiente, satisfecho: "Bien hecho. La cripta sigue esperando, pero por ahora respiren tranquilos."',
+    '"Impresionante", murmura el DM mientras anota algo en sus notas, sin levantar la vista del todo. El silencio que sigue a la pelea se siente casi tan pesado como el combate mismo.',
+    'El DM sonrie apenas: "Uno menos. Guarden fuerzas — no saben que mas los espera mas adelante."'
   ],
   nivel: [
-    'El DM sonrie: "Se nota que estas mejorando."',
-    'El DM cierra su libreta un momento: "Estas mas fuerte que cuando empezaste."'
+    'El DM sonrie y deja la lapicera un momento: "Se nota que estan mejorando. La experiencia deja marca, para bien."',
+    'El DM cierra su libreta un instante, como calculando algo: "Estan mas fuertes que cuando empezaron. Van a necesitarlo."'
   ]
 };
 function dmLine(category){
@@ -170,6 +182,21 @@ function pushDM(party, category){
   if(!line) return;
   party.log.push({kind:'dm', text: line, ts: Date.now()});
   if(party.log.length > 80) party.log.shift();
+}
+
+// El DM sugiere usar un objeto del inventario si alguien presente tiene algo util para esta escena.
+function pushItemSuggestion(party, scene, memberIds){
+  for(const itemName of Object.keys(USABLE_SCENE_ITEMS)){
+    const def = USABLE_SCENE_ITEMS[itemName];
+    if(!def.scenes.includes(scene.type)) continue;
+    const ownerId = memberIds.find(id => party.characters[id] && party.characters[id].inventory.includes(itemName));
+    if(ownerId){
+      const ownerName = party.characters[ownerId].name;
+      party.log.push({kind:'dm', text: 'El DM señala hacia '+ownerName+': "Esa '+itemName.toLowerCase()+' que llevas podria servirte aca."', ts: Date.now()});
+      if(party.log.length > 80) party.log.shift();
+      return;
+    }
+  }
 }
 
 function broadcastParty(code){
@@ -218,6 +245,17 @@ function damagePlayer(party, playerId, dmg){
 }
 
 function advanceTurn(party){
+  // si la fiesta esta separada resolviendo una bifurcacion, pasa al siguiente subgrupo en vez
+  // de volver a modo exploracion normal
+  if(party.forkQueue && party.forkQueue.length){
+    party.forkQueue.shift(); // el subgrupo actual ya termino su encuentro
+    if(party.forkQueue.length){
+      startForkGroupScene(party);
+      return;
+    }
+    party.forkQueue = null;
+    pushLog(party, 'sys', 'La fiesta vuelve a reunirse tras separarse.');
+  }
   // el que acaba de jugar pasa al final de la cola; el siguiente frente de la cola juega despues
   const q = party.turnQueue || [];
   if(q.length){ const finished = q.shift(); q.push(finished); }
@@ -226,24 +264,43 @@ function advanceTurn(party){
   party.currentScene = null;
 }
 
+function resolveHealTarget(party, sc, playerId, targetId){
+  // valida que el objetivo sea un aliado presente en este combate (o el mismo lanzador); si no, cura al lanzador
+  if(targetId && targetId!==playerId && party.characters[targetId]){
+    const inCombat = sc.combatOrder && sc.combatOrder.some(e=>e.type==='player' && e.id===targetId && !sc.fledIds.includes(targetId));
+    if(inCombat) return party.characters[targetId];
+  }
+  return party.characters[playerId];
+}
+
 function resolveEnemyIfCurrent(party, sc){
-  // Resuelve automaticamente los turnos del enemigo (y saltea jugadores que ya huyeron)
-  // hasta que le toque a un jugador activo, o termine el combate.
+  // Resuelve automaticamente los turnos del enemigo (y saltea jugadores que huyeron o estan caidos)
+  // hasta que le toque a un jugador activo y consciente, o termine el combate.
   let guard = 0;
   while(guard < 12){
     const entry = sc.combatOrder[sc.combatIdx];
     if(!entry) return;
     if(entry.type==='player'){
-      if(sc.fledIds.includes(entry.id)){
+      const c = party.characters[entry.id];
+      if(sc.fledIds.includes(entry.id) || !c || c.hp<=0){
         sc.combatIdx = (sc.combatIdx+1) % sc.combatOrder.length;
         guard++; continue;
       }
-      return; // le toca a un jugador presente -> se detiene aca, esperando su accion
+      return; // le toca a un jugador presente y consciente -> se detiene aca, esperando su accion
     }
-    // turno del enemigo
-    const targets = sc.combatOrder.filter(e=>e.type==='player' && !sc.fledIds.includes(e.id));
+    // turno del enemigo: solo puede atacar a jugadores presentes, no huidos, y conscientes
+    const targets = sc.combatOrder.filter(e=>e.type==='player' && !sc.fledIds.includes(e.id) && party.characters[e.id] && party.characters[e.id].hp>0);
     if(!targets.length){
-      pushLog(party,'sys','El grupo se retira y pierde de vista al enemigo.');
+      const anyoneLeft = sc.combatOrder.some(e=>e.type==='player' && !sc.fledIds.includes(e.id));
+      if(anyoneLeft){
+        // todo el grupo cayo inconsciente: para que el juego no quede trabado, se reaniman a duras penas
+        pushLog(party,'bad','Todo el grupo cae ante '+sc.enemy.name+'... pero tras un tenso respiro, logran reanimarse a duras penas con 1 punto de vida.');
+        sc.combatOrder.forEach(e=>{
+          if(e.type==='player'){ const pc=party.characters[e.id]; if(pc && pc.hp<=0) pc.hp = 1; }
+        });
+      } else {
+        pushLog(party,'sys','El grupo se retira y pierde de vista al enemigo.');
+      }
       advanceTurn(party);
       return;
     }
@@ -263,8 +320,7 @@ function resolveEnemyIfCurrent(party, sc){
       const newHp = damagePlayer(party, target.id, dmg);
       pushLog(party,'bad', tChar.name+' recibe '+dmg+' de daño.');
       if(newHp<=0){
-        pushLog(party,'bad', tChar.name+' cae, pero tras un breve respiro recupera fuerzas.');
-        tChar.hp = tChar.maxHp;
+        pushLog(party,'bad', tChar.name+' cae inconsciente. Necesita que alguien lo/la reanime con una pocion o con curacion antes de poder seguir participando.');
       }
     }
     sc.combatIdx = (sc.combatIdx+1) % sc.combatOrder.length;
@@ -272,39 +328,31 @@ function resolveEnemyIfCurrent(party, sc){
   }
 }
 
-function startTurnForPlayer(party, playerId){
-  if(party.status !== 'idle' || party.currentScene){
-    return { error: 'Ya hay una escena en curso en esta fiesta.' };
-  }
-  if(party.turnQueue && party.turnQueue.length && party.turnQueue[0] !== playerId){
-    return { error: 'No es tu turno.' };
-  }
-  const myChar = party.characters[playerId];
-  if(!myChar) return { error: 'No tenes personaje publicado en esta fiesta.' };
-
-  // la posicion "actual" de la fiesta es la de cualquier personaje ya ubicado (todos deberian coincidir)
-  const placedPositions = Object.values(party.characters).map(c=>c.mapPos).filter(v=>typeof v==='number' && v>=0);
-  const currentSharedPos = placedPositions.length ? placedPositions[0] : -1;
-  const nextMapPos = (currentSharedPos>=0) ? (currentSharedPos+1) % MAP_POINTS_LEN : 0;
-  const guardBias = GUARD_ROOM_INDEXES.includes(nextMapPos) && Math.random() < 0.6;
-  const type = guardBias ? 'combate' : SCENE_TYPES[Math.floor(Math.random()*SCENE_TYPES.length)];
-  const presentIds = Object.keys(party.characters); // la fiesta se mueve junta: todos estan presentes
+// Genera una escena de encuentro (combate/social/exploracion/trampa/puerta/hallazgo/bifurcacion)
+// para el conjunto de miembros indicado. Reutilizable tanto para toda la fiesta como para un subgrupo.
+function buildEncounterScene(party, memberIds, opts){
+  opts = opts || {};
+  const allowFork = opts.allowFork && memberIds.length > 1;
+  const guardBias = opts.guardBias;
+  let types = SCENE_TYPES.slice();
+  if(allowFork) types.push('bifurcacion');
+  const type = guardBias ? 'combate' : types[Math.floor(Math.random()*types.length)];
   let scene;
+
   if(type==='combate'){
-    const avgLevel = presentIds.reduce((s,id)=>s+party.characters[id].level,0) / presentIds.length;
+    const avgLevel = memberIds.reduce((s,id)=>s+party.characters[id].level,0) / memberIds.length;
     const base = guardBias ? GUARD_ENEMY : ENEMIES[Math.floor(Math.random()*ENEMIES.length)];
-    const extraHp = Math.max(0, presentIds.length-1) * 8; // mas dura si son varios
+    const extraHp = Math.max(0, memberIds.length-1) * 8; // mas dura si son varios
     const enemy = Object.assign({}, base, {maxHp: base.hp + Math.round((avgLevel-1)*4) + extraHp});
     enemy.hp = enemy.maxHp;
-    const grupal = presentIds.length>1;
+    const grupal = memberIds.length>1;
     const title = guardBias ? (grupal?'Un guardia les corta el paso!':'Un guardia te corta el paso!') : 'Emboscada! '+enemy.name;
     const text = guardBias
       ? ('Un guardia de la cripta, armado con espada y escudo, se planta frente a '+(grupal?'ustedes.':'vos.'))
       : ('Un '+enemy.name.toLowerCase()+' corta el paso'+(grupal?' al grupo.':'.'));
-    scene = {type:'combate', title, text, enemy, usedSpecialBy:[], attackedIds:[], fledIds:[], halfDamageFor:null, firstStrikeUsed:false};
+    scene = {type:'combate', title, text, enemy, usedSpecialBy:[], attackedIds:[], fledIds:[], halfDamageFor:null, firstStrikeUsed:false, groupMembers:memberIds};
 
-    // iniciativa individual: cada presente tira su propio d20 + mod Destreza
-    const combatOrder = presentIds.map(id=>{
+    const combatOrder = memberIds.map(id=>{
       const c = party.characters[id];
       const roll = rollDie(20);
       const initVal = roll + mod(c.stats.DES);
@@ -318,19 +366,67 @@ function startTurnForPlayer(party, playerId){
     pushLog(party,'sys','Iniciativa: '+combatOrder.map(e=> e.name+' d20('+e.roll+')'+fmtMod(e.init-e.roll)+'='+e.init).join(' | '));
     pushLog(party,'sys','Orden de turnos: '+combatOrder.map(e=>e.name).join(' -> '));
   } else if(type==='social'){
-    scene = Object.assign({type:'social'}, SOCIAL_SCENES[Math.floor(Math.random()*SOCIAL_SCENES.length)]);
+    scene = Object.assign({type:'social', groupMembers:memberIds}, SOCIAL_SCENES[Math.floor(Math.random()*SOCIAL_SCENES.length)]);
   } else if(type==='exploracion'){
-    scene = Object.assign({type:'exploracion'}, EXPLORE_SCENES[Math.floor(Math.random()*EXPLORE_SCENES.length)]);
+    scene = Object.assign({type:'exploracion', groupMembers:memberIds}, EXPLORE_SCENES[Math.floor(Math.random()*EXPLORE_SCENES.length)]);
   } else if(type==='trampa'){
-    scene = Object.assign({type:'trampa'}, TRAP_SCENES[Math.floor(Math.random()*TRAP_SCENES.length)]);
+    scene = Object.assign({type:'trampa', groupMembers:memberIds}, TRAP_SCENES[Math.floor(Math.random()*TRAP_SCENES.length)]);
   } else if(type==='puerta'){
-    scene = {type:'puerta', title:'Puerta cerrada', text:'Una pesada puerta de roble y hierro bloquea el paso. Podes buscar una llave escondida, forzarla, o tomar otro camino.'};
+    scene = {type:'puerta', title:'Puerta cerrada', text:'Una pesada puerta de roble y hierro bloquea el paso. Podes buscar una llave escondida, forzarla, o tomar otro camino.', groupMembers:memberIds};
+  } else if(type==='bifurcacion'){
+    const f = FORK_SCENES[Math.floor(Math.random()*FORK_SCENES.length)];
+    scene = {type:'bifurcacion', title:f.title, text:f.text, paths:f.paths, choices:{}, forkMembers:memberIds.slice(), groupMembers:memberIds};
   } else {
-    scene = {type:'hallazgo', title:'Un hallazgo silencioso', text:'Esta sala esta vacia, pero algo brilla entre los escombros.'};
+    scene = {type:'hallazgo', title:'Un hallazgo silencioso', text:'Esta sala esta vacia, pero algo brilla entre los escombros.', groupMembers:memberIds};
   }
+  return scene;
+}
+
+function startForkGroupScene(party){
+  const next = party.forkQueue[0];
+  const scene = buildEncounterScene(party, next.members, {});
+  pushLog(party, 'sys', 'Mientras tanto, '+next.members.map(id=>party.characters[id].name).join(' y ')+' avanzan por su camino...');
+  pushDM(party, scene.type);
+  pushItemSuggestion(party, scene, next.members);
+  party.status = scene.type==='combate' ? 'combat' : 'event';
+  party.currentScene = scene;
+  if(scene.type==='combate') resolveEnemyIfCurrent(party, scene);
+}
+
+function getEffectiveTurnLeader(party){
+  // el primer personaje consciente (hp>0) en la cola de turnos; si todos estan caidos, devuelve el frente igual
+  const q = party.turnQueue || [];
+  for(const id of q){
+    const c = party.characters[id];
+    if(c && c.hp > 0) return id;
+  }
+  return q.length ? q[0] : null;
+}
+
+function startTurnForPlayer(party, playerId){
+  if(party.status !== 'idle' || party.currentScene){
+    return { error: 'Ya hay una escena en curso en esta fiesta.' };
+  }
+  const leader = getEffectiveTurnLeader(party);
+  if(leader && leader !== playerId){
+    return { error: 'No es tu turno.' };
+  }
+  const myChar = party.characters[playerId];
+  if(!myChar) return { error: 'No tenes personaje publicado en esta fiesta.' };
+  if(myChar.hp <= 0) return { error: 'Estas caido — necesitas que te reanimen antes de poder explorar.' };
+
+  // la posicion "actual" de la fiesta es la de cualquier personaje ya ubicado (todos deberian coincidir)
+  const placedPositions = Object.values(party.characters).map(c=>c.mapPos).filter(v=>typeof v==='number' && v>=0);
+  const currentSharedPos = placedPositions.length ? placedPositions[0] : -1;
+  const nextMapPos = (currentSharedPos>=0) ? (currentSharedPos+1) % MAP_POINTS_LEN : 0;
+  const guardBias = GUARD_ROOM_INDEXES.includes(nextMapPos) && Math.random() < 0.6;
+  const presentIds = Object.keys(party.characters); // la fiesta se mueve junta: todos estan presentes
+
+  const scene = buildEncounterScene(party, presentIds, {allowFork:true, guardBias});
 
   pushLog(party, 'sys', myChar.name+' explora una nueva sala...');
   pushDM(party, scene.type);
+  pushItemSuggestion(party, scene, presentIds);
   party.status = scene.type==='combate' ? 'combat' : 'event';
   party.currentScene = scene;
   party.totalRooms = (party.totalRooms||0) + 1;
@@ -354,17 +450,45 @@ function startTurnForPlayer(party, playerId){
   return { ok:true };
 }
 
-function doAction(party, playerId, kind, clientRoll){
+function doAction(party, playerId, kind, clientRoll, targetId, itemName){
   const myChar = party.characters[playerId];
   if(!myChar) return { error:'No tenes personaje publicado.' };
   const sc = party.currentScene;
   if(!sc) return { error:'No hay escena activa.' };
 
-  // fuera de combate, solo puede actuar quien esta al frente de la cola de turnos
-  if(sc.type!=='combate'){
-    if(party.turnQueue && party.turnQueue.length && party.turnQueue[0] !== playerId){
-      return { error:'No es tu turno.' };
+  // fuera de combate, cualquier miembro presente de la fiesta puede resolver la decision
+  // (el grupo discute y quien quiera puede actuar — no solo a quien "le toca" explorar).
+  // si la escena tiene groupMembers (por ejemplo, un subgrupo separado tras una bifurcacion),
+  // solo esos miembros pueden interactuar con ella.
+  if(sc.groupMembers && !sc.groupMembers.includes(playerId)){
+    return { error:'No estas en esta escena — tu personaje esta en otra parte de la cripta ahora mismo.' };
+  }
+  if(myChar.hp <= 0 && sc.type!=='combate'){
+    return { error:'Estas caido — necesitas que te reanimen antes de poder actuar.' };
+  }
+
+  if(sc.type==='bifurcacion'){
+    if(kind!=='choose_path') return { error:'Accion invalida.' };
+    const pathId = targetId; // reutilizamos el campo targetId para mandar el id del camino elegido
+    if(!sc.paths.some(p=>p.id===pathId)) return { error:'Camino invalido.' };
+    if(sc.choices[playerId]) return { error:'Ya elegiste tu camino, esperando al resto del grupo.' };
+    sc.choices[playerId] = pathId;
+    pushLog(party,'sys', myChar.name+' elige: '+(sc.paths.find(p=>p.id===pathId)||{}).label+'.');
+    const stillWaiting = sc.forkMembers.filter(id=>!sc.choices[id]);
+    if(stillWaiting.length){
+      return { ok:true };
     }
+    // todos eligieron -> armar los subgrupos y arrancar el primero
+    const groups = {};
+    sc.forkMembers.forEach(id=>{ const p=sc.choices[id]; (groups[p]=groups[p]||[]).push(id); });
+    const groupOrder = Object.keys(groups);
+    pushLog(party,'sys','La fiesta se separa: '+groupOrder.map(gid=>{
+      const label = (sc.paths.find(p=>p.id===gid)||{}).label || gid;
+      return label+' ('+groups[gid].map(id=>party.characters[id].name).join(', ')+')';
+    }).join(' | '));
+    party.forkQueue = groupOrder.map(gid=>({pathId:gid, members:groups[gid]}));
+    startForkGroupScene(party);
+    return { ok:true };
   }
 
   if(sc.type==='combate'){
@@ -392,14 +516,16 @@ function doAction(party, playerId, kind, clientRoll){
           dmg = rollDie(8)+rollDie(8);
           pushLog(party,'ok', myChar.name+' invoca Forma Salvaje: un zarpazo de '+dmg+' de daño.');
         } else if(myChar.cls==='clerigo'){
+          const target = resolveHealTarget(party, sc, playerId, targetId);
           const heal = rollDie(6)+rollDie(6)+mod(myChar.stats.SAB);
-          myChar.hp = Math.min(myChar.maxHp, myChar.hp+heal);
-          pushLog(party,'ok', myChar.name+' usa Palabra Sagrada y recupera '+heal+' de vida.');
+          target.hp = Math.min(target.maxHp, target.hp+heal);
+          pushLog(party,'ok', myChar.name+' usa Palabra Sagrada sobre '+(target===myChar?'si mismo':target.name)+' y recupera '+heal+' de vida.');
           healOnly = true;
         } else if(myChar.cls==='bardo'){
+          const target = resolveHealTarget(party, sc, playerId, targetId);
           const heal = rollDie(6)+mod(myChar.stats.CAR);
-          myChar.hp = Math.min(myChar.maxHp, myChar.hp+Math.max(1,heal));
-          pushLog(party,'ok', myChar.name+' entona su Cancion Inspiradora y recupera '+Math.max(1,heal)+' de vida.');
+          target.hp = Math.min(target.maxHp, target.hp+Math.max(1,heal));
+          pushLog(party,'ok', myChar.name+' entona su Cancion Inspiradora sobre '+(target===myChar?'si mismo':target.name)+' y recupera '+Math.max(1,heal)+' de vida.');
           healOnly = true;
         } else if(myChar.cls==='barbaro'){
           pushLog(party,'ok', myChar.name+' entra en Furia: el proximo golpe que reciba sera la mitad de daño.');
@@ -413,7 +539,10 @@ function doAction(party, playerId, kind, clientRoll){
           else if(rk==='crit' || autoHit) hit = true;
           else hit = (roll+atkStat) >= enemy.ac;
           if(myChar.cls==='monje'){ dmg = rollDie(6)+rollDie(6)+atkStat; }
-          else { dmg = rollDie(8) + atkStat + (myChar.cls==='guerrero'?4:0) + (myChar.cls==='paladin'?4:0) + (rk==='crit'?rollDie(8):0); }
+          else {
+            const wDie = cd.weaponDie || 8;
+            dmg = rollDie(wDie) + atkStat + (myChar.cls==='guerrero'?4:0) + (myChar.cls==='paladin'?4:0) + (rk==='crit'?rollDie(wDie):0);
+          }
           if(myChar.cls==='picaro' && !sc.firstStrikeUsed) dmg *= 2;
           const flair = rk==='crit' ? ' ¡GOLPE CRITICO!' : (rk==='fumble' && !autoHit ? ' ¡PIFIA NATURAL!' : '');
           pushLog(party, hit?'ok':'bad', myChar.name+' usa su habilidad especial:'+flair+' '+(hit?'impacto por '+dmg+' de daño.':'aun asi falla.'));
@@ -438,10 +567,11 @@ function doAction(party, playerId, kind, clientRoll){
           pushLog(party, hit?'ok':'bad', myChar.name+' ataca: d20('+roll+')'+fmtMod(atkStat)+' = '+total+' vs CA '+enemy.ac+' -> '+(hit?'Impacto!':'Falla'));
         }
         if(hit){
-          dmg = rollDie(8) + atkStat + (rk==='crit' ? rollDie(8) : 0);
+          const wDie = cd.weaponDie || 8;
+          dmg = rollDie(wDie) + atkStat + (rk==='crit' ? rollDie(wDie) : 0);
           if(rk==='crit') pushLog(party,'ok','El critico duplica el dado de daño!');
           if(myChar.cls==='picaro' && !sc.firstStrikeUsed){ dmg*=2; pushLog(party,'ok','Golpe Furtivo: daño duplicado!'); }
-          pushLog(party,'ok', myChar.name+' inflige '+dmg+' de daño.');
+          pushLog(party,'ok', myChar.name+' inflige '+dmg+' de daño con su '+cd.weapon.toLowerCase()+'.');
         }
       }
 
@@ -475,10 +605,16 @@ function doAction(party, playerId, kind, clientRoll){
       const potionName = 'Pocion menor de curacion';
       const idx = myChar.inventory.indexOf(potionName);
       if(idx===-1) return { error:'No tenes pociones para usar.' };
+      const target = resolveHealTarget(party, sc, playerId, targetId);
       myChar.inventory.splice(idx,1);
-      const heal = rollDie(8)+2;
-      myChar.hp = Math.min(myChar.maxHp, myChar.hp+heal);
-      pushLog(party,'ok', myChar.name+' bebe una pocion y recupera '+heal+' de vida.');
+      const heal = rollDie(4)+rollDie(4)+2; // las pociones de curacion usan D4 segun las reglas
+      const wasDowned = target.hp<=0;
+      target.hp = Math.min(target.maxHp, target.hp+heal);
+      if(target===myChar){
+        pushLog(party,'ok', myChar.name+' bebe una pocion y recupera '+heal+' de vida.');
+      } else {
+        pushLog(party,'ok', myChar.name+' le da una pocion a '+target.name+(wasDowned?', reanimandolo/a':'')+' — recupera '+heal+' de vida.');
+      }
       sc.combatIdx = (sc.combatIdx+1) % combatOrder.length;
       resolveEnemyIfCurrent(party, sc);
       return { ok:true };
@@ -550,8 +686,9 @@ function doAction(party, playerId, kind, clientRoll){
         if(leveled) pushLog(party,'ok', leveled);
       } else {
         const dmg = rollDie(4);
-        damagePlayer(party, playerId, dmg);
+        const newHp = damagePlayer(party, playerId, dmg);
         pushLog(party,'bad', 'Te lastimas el hombro en el intento y recibis '+dmg+' de daño.');
+        if(newHp<=0) pushLog(party,'bad', myChar.name+' cae inconsciente. Necesita que alguien lo/la reanime con una pocion o con curacion.');
       }
       advanceTurn(party);
       return { ok:true };
@@ -563,11 +700,26 @@ function doAction(party, playerId, kind, clientRoll){
     return { error:'Accion invalida.' };
   }
 
+  if(kind==='use_item'){
+    if(sc.type==='combate' || sc.type==='puerta' || sc.type==='hallazgo' || sc.type==='bifurcacion'){
+      return { error:'No es el momento de usar eso.' };
+    }
+    const def = USABLE_SCENE_ITEMS[itemName];
+    if(!def || !def.scenes.includes(sc.type)) return { error:'Eso no te sirve en esta situacion.' };
+    const idx = myChar.inventory.indexOf(itemName);
+    if(idx===-1) return { error:'No tenes ese objeto.' };
+    if(sc.dcReduction) return { error:'Ya usaste algo para ayudarte en esta escena.' };
+    myChar.inventory.splice(idx,1);
+    sc.dcReduction = def.bonus;
+    pushLog(party,'ok', myChar.name+' usa su '+itemName.toLowerCase()+': '+def.desc+' (la dificultad de la prueba baja '+def.bonus+' puntos).');
+    return { ok:true };
+  }
+
   // social / exploracion / trampa
   if(kind==='check' || kind==='check_alt'){
     const useAlt = kind==='check_alt';
     const abil = useAlt ? (ALT_ABIL_BY_TYPE[sc.type]||sc.abil) : sc.abil;
-    const dc = useAlt ? sc.dc + 2 : sc.dc;
+    const dc = Math.max(5, (useAlt ? sc.dc + 2 : sc.dc) - (sc.dcReduction||0));
     const modVal = mod(myChar.stats[abil]);
     const roll = resolveRoll(clientRoll);
     const rk = rollKind(roll);
@@ -589,8 +741,9 @@ function doAction(party, playerId, kind, clientRoll){
       pushLog(party,'bad', sc.fail);
       if(sc.type!=='social'){
         const dmg = rollDie(6);
-        damagePlayer(party, playerId, dmg);
+        const newHp = damagePlayer(party, playerId, dmg);
         pushLog(party,'bad', myChar.name+' recibe '+dmg+' de daño.');
+        if(newHp<=0) pushLog(party,'bad', myChar.name+' cae inconsciente. Necesita que alguien lo/la reanime con una pocion o con curacion.');
       }
     }
     advanceTurn(party);
@@ -649,11 +802,48 @@ io.on('connection', (socket)=>{
     broadcastParty(code);
   });
 
-  socket.on('action', ({code, playerId, kind, clientRoll})=>{
+  socket.on('action', ({code, playerId, kind, clientRoll, targetId, itemName})=>{
     code = sanitizeCode(code);
     const party = getParty(code);
-    const result = doAction(party, playerId, kind, clientRoll);
+    const result = doAction(party, playerId, kind, clientRoll, targetId, itemName);
     if(result.error){ socket.emit('action_error', result.error); return; }
+    broadcastParty(code);
+  });
+
+  // comer raciones de viaje — funciona en cualquier momento, no requiere escena activa
+  socket.on('eat_rations', ({code, playerId})=>{
+    code = sanitizeCode(code);
+    const party = getParty(code);
+    const c = party.characters[playerId];
+    if(!c){ socket.emit('action_error','No tenes personaje publicado.'); return; }
+    if(c.hp<=0){ socket.emit('action_error','Estas caido, no podes comer ahora.'); return; }
+    if(c.hp>=c.maxHp){ socket.emit('action_error','Ya estas con la vida al maximo.'); return; }
+    const idx = c.inventory.indexOf('Raciones de viaje');
+    if(idx===-1){ socket.emit('action_error','No tenes raciones de viaje.'); return; }
+    c.inventory.splice(idx,1);
+    const heal = rollDie(4);
+    c.hp = Math.min(c.maxHp, c.hp+heal);
+    pushLog(party,'ok', c.name+' come sus raciones de viaje y recupera '+heal+' de vida.');
+    broadcastParty(code);
+  });
+
+  // reanimar a un aliado caido con una pocion — funciona en cualquier momento, no requiere
+  // que haya una escena de combate activa (por si alguien cae fuera de una pelea).
+  socket.on('revive', ({code, playerId, targetId})=>{
+    code = sanitizeCode(code);
+    const party = getParty(code);
+    const reviver = party.characters[playerId];
+    const target = party.characters[targetId];
+    if(!reviver){ socket.emit('action_error','No tenes personaje publicado.'); return; }
+    if(!target){ socket.emit('action_error','Ese personaje no existe.'); return; }
+    if(reviver.hp<=0){ socket.emit('action_error','Estas caido, no podes ayudar a nadie ahora.'); return; }
+    if(target.hp>0){ socket.emit('action_error', target.name+' no esta caido.'); return; }
+    const idx = reviver.inventory.indexOf('Pocion menor de curacion');
+    if(idx===-1){ socket.emit('action_error','No tenes pociones para usar.'); return; }
+    reviver.inventory.splice(idx,1);
+    const heal = rollDie(4)+rollDie(4)+2;
+    target.hp = Math.min(target.maxHp, heal);
+    pushLog(party, 'ok', reviver.name+' usa una pocion en '+target.name+' y lo/la reanima con '+heal+' de vida.');
     broadcastParty(code);
   });
 

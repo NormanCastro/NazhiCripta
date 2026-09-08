@@ -8,27 +8,26 @@
 </head>
 <body>
 
-<header class="top">
-  <div>
-    <h1>Cripta de Nazhi</h1>
-    <div class="subtitle">Aventura de rol multijugador — sincronizada en vivo</div>
-  </div>
-  <button class="theme-toggle" id="themeToggle">Tema</button>
-</header>
+<div class="app-shell">
+  <aside class="sidebar" id="charSidebar">
+    <div class="panel" id="charCardPanel"><p class="small-note">Publicá tu personaje en la pestaña Fiesta para verlo aca, siempre a mano.</p></div>
+  </aside>
 
-<div class="wrap">
+  <div class="main-col">
+    <header class="top">
+      <div>
+        <h1>Cripta de Nazhi</h1>
+        <div class="subtitle">Aventura de rol multijugador — sincronizada en vivo</div>
+      </div>
+      <nav class="tabs" id="tabs">
+        <button data-tab="guia" class="active">Guia</button>
+        <button data-tab="personaje">Personaje</button>
+        <button data-tab="fiesta">Fiesta</button>
+        <button data-tab="aventura">Aventura</button>
+      </nav>
+    </header>
 
-  <nav class="tabs" id="tabs">
-    <button data-tab="guia" class="active">Guia</button>
-    <button data-tab="personaje">Personaje</button>
-    <button data-tab="fiesta">Fiesta</button>
-    <button data-tab="aventura">Aventura</button>
-  </nav>
-
-  <div id="charBar" class="panel hidden">
-    <div class="topbar-char" id="charBarContent"></div>
-  </div>
-
+    <div class="wrap">
   <!-- ===================== GUÍA ===================== -->
   <section id="tab-guia" class="tab-content">
     <div class="panel">
@@ -214,7 +213,6 @@
       </div>
 
       <div>
-        <div class="panel" id="charCardPanel"></div>
         <div class="panel" id="partyCardPanel"></div>
         <div class="panel">
           <div class="quick-buttons">
@@ -234,6 +232,8 @@
     </div>
   </section>
 
+    </div>
+  </div>
 </div>
 
 <button class="dice-fab" id="diceFab" title="Tirador de dados">D20</button>
