@@ -11,12 +11,12 @@
   --shadow:rgba(0,0,0,0.7);
   --glow-2:rgba(0,255,0,0.35);
   --glow-3:rgba(34,211,238,0.35);
-  --font-head:'Georgia','Palatino Linotype',serif;
-  --font-body:'Trebuchet MS','Segoe UI',sans-serif;
+  --font-head:'Audiowide','Segoe UI',sans-serif;
+  --font-body:'Saira Condensed','Segoe UI',sans-serif;
 }
 *{box-sizing:border-box;}
 body{
-  margin:0; color:var(--ink); font-family:var(--font-body); font-size:1.05rem;
+  margin:0; color:var(--ink); font-family:var(--font-body); font-size:1.12rem;
   min-height:100vh; padding-bottom:40px;
   background:var(--bg);
 }
