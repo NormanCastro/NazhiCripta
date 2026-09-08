@@ -34,13 +34,15 @@
     <div class="panel">
       <h2>Como se juega</h2>
       <ol class="guide-list">
-        <li><strong>1. Crea tu personaje.</strong> Elegis raza y clase, tiras tus atributos con los dados, y el juego arma una breve historia de origen.</li>
+        <li><strong>1. Crea tu personaje.</strong> Elegis raza y clase (10 clases clasicas disponibles), tiras tus atributos con los dados, y el juego arma una breve historia de origen.</li>
         <li><strong>2. Atributos.</strong> Fuerza (FUE), Destreza (DES), Constitucion (CON), Inteligencia (INT), Sabiduria (SAB) y Carisma (CAR). El modificador es (valor - 10) dividido 2, redondeado hacia abajo.</li>
-        <li><strong>3. Tiradas.</strong> Se lanza 1d20 mas el modificador correspondiente contra una Dificultad (CD).</li>
+        <li><strong>3. Tiradas.</strong> Cuando tu accion requiere una tirada, el dado D20 flotante se ilumina — tocalo y tira vos mismo. El resultado se suma al modificador correspondiente contra una Dificultad (CD) o la Clase de Armadura del rival.</li>
         <li><strong>4. Iniciativa.</strong> Al entrar en combate, vos y el enemigo tiran d20 (vos con tu modificador de Destreza). Quien saca mas alto actua primero.</li>
-        <li><strong>5. Combate.</strong> d20 + modificador de ataque contra la Clase de Armadura (CA) del rival. Si acierta, se tira daño. 0 de vida = caes, pero te recuperas tras un descanso.</li>
-        <li><strong>6. Fiesta.</strong> Entra a un codigo de sala junto a tus amigos: todos ven el mismo tablero, la misma bitacora y el mismo chat, en vivo.</li>
-        <li><strong>7. Progresion.</strong> Ganar encuentros da experiencia; al subir de nivel ganas mas vida y te curas del todo.</li>
+        <li><strong>5. Combate.</strong> Ademas de Atacar y tu habilidad especial, podes Defenderte (reducis el daño que recibis) o beber una Pocion si tenes una en el inventario. 0 de vida = caes, pero te recuperas tras un descanso.</li>
+        <li><strong>6. Tu hoja de personaje.</strong> Desde la pestaña Aventura, el boton "Mi hoja de personaje" te muestra tus estadisticas, vida e inventario actualizados en cualquier momento.</li>
+        <li><strong>7. El mapa.</strong> Arriba de la Aventura vas viendo un mapa con las salas que tu fiesta ya recorrio y el tipo de cada una (combate, encuentro social, trampa, hallazgo).</li>
+        <li><strong>8. Fiesta.</strong> Entra a un codigo de sala junto a tus amigos: todos ven el mismo tablero, el mismo mapa, la misma bitacora y el mismo chat, en vivo.</li>
+        <li><strong>9. Progresion.</strong> Ganar encuentros da experiencia; al subir de nivel ganas mas vida y te curas del todo.</li>
       </ol>
       <p class="small-note">Version simplificada e independiente inspirada en juegos de rol de mesa clasicos; no reproduce reglas ni textos de ningun manual con derechos de autor.</p>
     </div>
@@ -123,6 +125,19 @@
       <p>Primero creá un personaje en la pestaña Personaje, y publicalo en la pestaña Fiesta.</p>
     </div>
 
+    <div class="panel hidden" id="mapPanel">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;">Mapa de la cripta</h3>
+        <button class="action secondary" id="sheetToggleBtn" style="margin:0;">Mi hoja de personaje</button>
+      </div>
+      <div id="roomMap" class="room-map"></div>
+    </div>
+
+    <div class="panel hidden" id="mySheetPanel">
+      <h3>Mi hoja de personaje</h3>
+      <div id="mySheetContent"></div>
+    </div>
+
     <div class="panel hidden" id="adventureIntro">
       <h2>La Cripta te espera</h2>
       <p id="partyTurnInfo">Explora salas al azar: combates, encuentros sociales, trampas y hallazgos.</p>
@@ -141,6 +156,7 @@
           </div>
           <div class="hp-bar-wrap"><div class="enemy-hp-bar" id="enemyHpBar" style="width:100%"></div></div>
         </div>
+        <p class="small-note hidden" id="rollPrompt"></p>
         <div id="choices" style="margin-top:14px;"></div>
       </div>
       <div class="panel">

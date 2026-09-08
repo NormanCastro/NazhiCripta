@@ -17,8 +17,15 @@ const CLASSES = {
   picaro:{ hitDie:8, primary:'DES', specialName:'Golpe Furtivo' },
   clerigo:{ hitDie:8, primary:'SAB', specialName:'Palabra Sagrada' },
   barbaro:{ hitDie:12, primary:'FUE', specialName:'Furia' },
-  explorador:{ hitDie:10, primary:'DES', specialName:'Tiro Certero' }
+  explorador:{ hitDie:10, primary:'DES', specialName:'Tiro Certero' },
+  paladin:{ hitDie:10, primary:'FUE', specialName:'Golpe Sagrado' },
+  bardo:{ hitDie:8, primary:'CAR', specialName:'Cancion Inspiradora' },
+  druida:{ hitDie:8, primary:'SAB', specialName:'Forma Salvaje' },
+  monje:{ hitDie:8, primary:'DES', specialName:'Golpe Certero' }
 };
+
+const ALT_ABIL_BY_TYPE = { social:'FUE', exploracion:'FUE', trampa:'INT' };
+const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰' };
 
 const ENEMIES = [
   {name:'Rata gigante', hp:9, ac:11, atk:2, dmg:[1,4], xp:15, init:2},
@@ -58,6 +65,11 @@ const SCENE_TYPES = ['combate','social','exploracion','trampa','hallazgo'];
 function rollDie(sides){ return 1 + Math.floor(Math.random()*sides); }
 function mod(val){ return Math.floor((val-10)/2); }
 function fmtMod(m){ return m>=0? '+'+m : ''+m; }
+function resolveRoll(clientRoll){
+  const n = Number(clientRoll);
+  if(Number.isInteger(n) && n>=1 && n<=20) return n;
+  return rollDie(20);
+}
 
 /* ===================== ESTADO EN MEMORIA (por sala/codigo) ===================== */
 
@@ -80,6 +92,8 @@ function blankParty(code){
     enemyActsFirst: false,
     log: [],
     chat: [],
+    roomHistory: [],
+    totalRooms: 0,
     updatedAt: Date.now()
   };
 }
@@ -198,6 +212,10 @@ function startTurnForPlayer(party, playerId){
   party.usedSpecialThisScene = false;
   party.sceneFirstHit = true;
   party.enemyActsFirst = false;
+  party.totalRooms = (party.totalRooms||0) + 1;
+  party.roomHistory = (party.roomHistory||[]);
+  party.roomHistory.push({type: scene.type, n: party.totalRooms});
+  if(party.roomHistory.length > 10) party.roomHistory.shift();
 
   if(scene.type==='combate'){
     const playerRoll = rollDie(20);
@@ -213,7 +231,7 @@ function startTurnForPlayer(party, playerId){
   return { ok:true };
 }
 
-function doAction(party, playerId, kind){
+function doAction(party, playerId, kind, clientRoll){
   const myChar = party.characters[playerId];
   if(!myChar) return { error:'No tenes personaje publicado.' };
   const order = currentTurnOrder(party);
@@ -235,10 +253,19 @@ function doAction(party, playerId, kind){
         if(myChar.cls==='mago'){
           dmg = rollDie(6)+rollDie(6);
           pushLog(party,'ok', myChar.name+' lanza Dardo Arcano: '+dmg+' de daño magico.');
+        } else if(myChar.cls==='druida'){
+          dmg = rollDie(8)+rollDie(8);
+          pushLog(party,'ok', myChar.name+' invoca Forma Salvaje: un zarpazo de '+dmg+' de daño.');
         } else if(myChar.cls==='clerigo'){
           const heal = rollDie(6)+rollDie(6)+mod(myChar.stats.SAB);
           myChar.hp = Math.min(myChar.maxHp, myChar.hp+heal);
           pushLog(party,'ok', myChar.name+' usa Palabra Sagrada y recupera '+heal+' de vida.');
+          party.usedSpecialThisScene = true;
+          return { ok:true };
+        } else if(myChar.cls==='bardo'){
+          const heal = rollDie(6)+mod(myChar.stats.CAR);
+          myChar.hp = Math.min(myChar.maxHp, myChar.hp+Math.max(1,heal));
+          pushLog(party,'ok', myChar.name+' entona su Cancion Inspiradora y recupera '+Math.max(1,heal)+' de vida.');
           party.usedSpecialThisScene = true;
           return { ok:true };
         } else if(myChar.cls==='barbaro'){
@@ -247,15 +274,21 @@ function doAction(party, playerId, kind){
           enemyTurn(party, playerId, true);
           return { ok:true };
         } else {
-          const roll = rollDie(20);
-          hit = myChar.cls==='explorador' ? true : (roll+atkStat) >= enemy.ac;
-          dmg = rollDie(8) + atkStat + (myChar.cls==='guerrero'?4:0);
+          const roll = resolveRoll(clientRoll);
+          hit = (myChar.cls==='explorador' || myChar.cls==='monje') ? true : (roll+atkStat) >= enemy.ac;
+          if(myChar.cls==='monje'){ dmg = rollDie(6)+rollDie(6)+atkStat; }
+          else { dmg = rollDie(8) + atkStat + (myChar.cls==='guerrero'?4:0) + (myChar.cls==='paladin'?4:0); }
           if(myChar.cls==='picaro' && party.sceneFirstHit) dmg *= 2;
           pushLog(party, hit?'ok':'bad', myChar.name+' usa su habilidad especial: '+(hit?'impacto por '+dmg+' de daño.':'aun asi falla.'));
+          if(myChar.cls==='paladin' && hit){
+            const heal = rollDie(4)+rollDie(4);
+            myChar.hp = Math.min(myChar.maxHp, myChar.hp+heal);
+            pushLog(party,'ok', myChar.name+' canaliza poder sagrado y recupera '+heal+' de vida.');
+          }
         }
         party.usedSpecialThisScene = true;
       } else {
-        const roll = rollDie(20);
+        const roll = resolveRoll(clientRoll);
         const total = roll+atkStat;
         hit = total >= enemy.ac;
         pushLog(party, hit?'ok':'bad', myChar.name+' ataca: d20('+roll+')'+fmtMod(atkStat)+' = '+total+' vs CA '+enemy.ac+' -> '+(hit?'Impacto!':'Falla'));
@@ -279,8 +312,26 @@ function doAction(party, playerId, kind){
       enemyTurn(party, playerId, false);
       return { ok:true };
 
+    } else if(kind==='defend'){
+      pushLog(party,'sys', myChar.name+' se cubre y se prepara para amortiguar el golpe.');
+      party.sceneFirstHit = false;
+      enemyTurn(party, playerId, true);
+      return { ok:true };
+
+    } else if(kind==='usepotion'){
+      const potionName = 'Pocion menor de curacion';
+      const idx = myChar.inventory.indexOf(potionName);
+      if(idx===-1) return { error:'No tenes pociones para usar.' };
+      myChar.inventory.splice(idx,1);
+      const heal = rollDie(8)+2;
+      myChar.hp = Math.min(myChar.maxHp, myChar.hp+heal);
+      pushLog(party,'ok', myChar.name+' bebe una pocion y recupera '+heal+' de vida.');
+      party.sceneFirstHit = false;
+      enemyTurn(party, playerId, false);
+      return { ok:true };
+
     } else if(kind==='flee'){
-      const roll = rollDie(20);
+      const roll = resolveRoll(clientRoll);
       const modv = mod(myChar.stats.DES);
       const success = (roll+modv) >= 12;
       pushLog(party, success?'ok':'bad', myChar.name+' intenta huir: d20('+roll+')'+fmtMod(modv)+' -> '+(success?'Escapa!':'No logra escapar.'));
@@ -309,12 +360,16 @@ function doAction(party, playerId, kind){
   }
 
   // social / exploracion / trampa
-  if(kind==='check'){
-    const modVal = mod(myChar.stats[sc.abil]);
-    const roll = rollDie(20);
+  if(kind==='check' || kind==='check_alt'){
+    const useAlt = kind==='check_alt';
+    const abil = useAlt ? (ALT_ABIL_BY_TYPE[sc.type]||sc.abil) : sc.abil;
+    const dc = useAlt ? sc.dc + 2 : sc.dc;
+    const modVal = mod(myChar.stats[abil]);
+    const roll = resolveRoll(clientRoll);
     const total = roll+modVal;
-    const success = total >= sc.dc;
-    pushLog(party, success?'ok':'bad', myChar.name+' tira '+sc.abil+': d20('+roll+')'+fmtMod(modVal)+' = '+total+' vs CD '+sc.dc+' -> '+(success?'Exito!':'Fallo'));
+    const success = total >= dc;
+    const prefix = useAlt ? 'Con un enfoque distinto, ' : '';
+    pushLog(party, success?'ok':'bad', prefix+myChar.name+' tira '+abil+': d20('+roll+')'+fmtMod(modVal)+' = '+total+' vs CD '+dc+' -> '+(success?'Exito!':'Fallo'));
     if(success){
       pushLog(party,'ok', sc.success);
       const item = Math.random()<0.4 ? ITEMS[Math.floor(Math.random()*ITEMS.length)] : null;
@@ -381,10 +436,10 @@ io.on('connection', (socket)=>{
     broadcastParty(code);
   });
 
-  socket.on('action', ({code, playerId, kind})=>{
+  socket.on('action', ({code, playerId, kind, clientRoll})=>{
     code = sanitizeCode(code);
     const party = getParty(code);
-    const result = doAction(party, playerId, kind);
+    const result = doAction(party, playerId, kind, clientRoll);
     if(result.error){ socket.emit('action_error', result.error); return; }
     broadcastParty(code);
   });

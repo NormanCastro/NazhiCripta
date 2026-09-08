@@ -13,8 +13,13 @@ const CLASSES = {
   picaro:{name:'Picaro', hitDie:8, primary:'DES', desc:'Sigiloso, veloz y letal cuando nadie lo espera.', special:'Golpe Furtivo: si es su primer ataque en el combate, duplica el daño.'},
   clerigo:{name:'Clerigo', hitDie:8, primary:'SAB', desc:'Canaliza poder divino para sanar y proteger.', special:'Palabra Sagrada: cura 2d6+SAB puntos de vida, una vez por combate.'},
   barbaro:{name:'Barbaro', hitDie:12, primary:'FUE', desc:'Furia desatada; el mas resistente y salvaje en batalla.', special:'Furia: reduce el daño recibido a la mitad durante un turno, una vez por combate.'},
-  explorador:{name:'Explorador', hitDie:10, primary:'DES', desc:'Cazador certero con el arco y conocedor del terreno.', special:'Tiro Certero: un ataque no puede fallar, una vez por combate.'}
+  explorador:{name:'Explorador', hitDie:10, primary:'DES', desc:'Cazador certero con el arco y conocedor del terreno.', special:'Tiro Certero: un ataque no puede fallar, una vez por combate.'},
+  paladin:{name:'Paladin', hitDie:10, primary:'FUE', desc:'Guerrero sagrado que combate por sus ideales y sana sus propias heridas.', special:'Golpe Sagrado: +4 de daño extra y cura 2d4 de vida al impactar, una vez por combate.'},
+  bardo:{name:'Bardo', hitDie:8, primary:'CAR', desc:'Artista itinerante cuya musica y palabras inspiran y sanan.', special:'Cancion Inspiradora: recupera 1d6+Carisma de vida, una vez por combate.'},
+  druida:{name:'Druida', hitDie:8, primary:'SAB', desc:'Guardian de la naturaleza que canaliza el poder salvaje.', special:'Forma Salvaje: un zarpazo salvaje inflige 2d8 de daño directo, una vez por combate.'},
+  monje:{name:'Monje', hitDie:8, primary:'DES', desc:'Marcial disciplinado que golpea con velocidad y precision.', special:'Golpe Certero: dos golpes veloces que nunca fallan, 2d6+Destreza de daño, una vez por combate.'}
 };
+const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰' };
 const ABILS = ['FUE','DES','CON','INT','SAB','CAR'];
 const ABIL_LABEL = {FUE:'Fuerza',DES:'Destreza',CON:'Constitucion',INT:'Inteligencia',SAB:'Sabiduria',CAR:'Carisma'};
 const ORIGENES = [
@@ -230,29 +235,59 @@ function updateCharBar(){
 
 /* ================= TIRADOR DE DADOS ================= */
 const dicePanel = document.getElementById('dicePanel');
-document.getElementById('diceFab').addEventListener('click', ()=> dicePanel.classList.toggle('hidden'));
+const diceFab = document.getElementById('diceFab');
+diceFab.addEventListener('click', ()=> dicePanel.classList.toggle('hidden'));
 let selDie = 20;
+let pendingAction = null; // {kind} cuando una accion espera que tiremos 1d20
 const diceTypeGrid = document.getElementById('diceTypeGrid');
 [4,6,8,10,12,20,100].forEach(d=>{
   const b = document.createElement('button');
   b.textContent = 'd'+d;
   if(d===20) b.classList.add('sel');
   b.addEventListener('click', ()=>{
+    if(pendingAction) return; // mientras hay una accion pendiente, el dado queda fijo en d20
     selDie = d;
     diceTypeGrid.querySelectorAll('button').forEach(x=>x.classList.remove('sel'));
     b.classList.add('sel');
   });
   diceTypeGrid.appendChild(b);
 });
+
+function requestRoll(kind){
+  pendingAction = { kind };
+  selDie = 20;
+  diceTypeGrid.querySelectorAll('button').forEach(x=>x.classList.remove('sel'));
+  diceTypeGrid.querySelectorAll('button')[5].classList.add('sel'); // d20 es el 6to boton (index 5)
+  document.getElementById('diceQty').value = 1;
+  document.getElementById('diceQty').disabled = true;
+  diceFab.classList.add('glow');
+  dicePanel.classList.remove('hidden');
+  document.getElementById('diceResult').innerHTML = '<p class="roll-highlight">Tirá el D20 para resolver tu accion.</p>';
+  renderAdventure();
+}
+function clearPendingAction(){
+  pendingAction = null;
+  diceFab.classList.remove('glow');
+  document.getElementById('diceQty').disabled = false;
+}
+
 document.getElementById('diceRollBtn').addEventListener('click', ()=>{
-  const qty = Math.max(1, Math.min(20, parseInt(document.getElementById('diceQty').value)||1));
+  const qty = pendingAction ? 1 : Math.max(1, Math.min(20, parseInt(document.getElementById('diceQty').value)||1));
+  const die = pendingAction ? 20 : selDie;
   const modv = parseInt(document.getElementById('diceMod').value)||0;
-  const rolls = rollMultiple(qty, selDie);
+  const rolls = rollMultiple(qty, die);
   const total = rolls.reduce((s,v)=>s+v,0) + modv;
   document.getElementById('diceResult').innerHTML =
-    '<div><strong>'+qty+'d'+selDie+(modv? fmtMod(modv):'')+'</strong></div>'+
+    '<div><strong>'+qty+'d'+die+(modv? fmtMod(modv):'')+'</strong></div>'+
     '<div>Tiradas: '+rolls.join(', ')+'</div>'+
     '<div style="font-size:1.3rem;color:var(--accent-3);font-weight:bold;">Total: '+total+'</div>';
+
+  if(pendingAction){
+    const kind = pendingAction.kind;
+    clearPendingAction();
+    dicePanel.classList.add('hidden');
+    sendActionWithRoll(kind, rolls[0]);
+  }
 });
 
 /* ================= SOCKET.IO / FIESTA EN VIVO ================= */
@@ -362,20 +397,63 @@ function sendChat(){
 }
 
 /* ================= AVENTURA (reacciona al estado del servidor) ================= */
+const ROLL_REQUIRED_KINDS = ['attack','special','flee','check','check_alt'];
+
 document.getElementById('startAdvBtn').addEventListener('click', ()=>{
   if(!currentCode) return;
   socket.emit('start_turn', {code: currentCode, playerId});
 });
 
+document.getElementById('sheetToggleBtn').addEventListener('click', ()=>{
+  document.getElementById('mySheetPanel').classList.toggle('hidden');
+  renderMySheet();
+});
+
 function refreshAdventureTab(){
   const hasChar = !!(partyCache && partyCache.characters[playerId]);
   document.getElementById('noCharWarning').classList.toggle('hidden', hasChar);
+  document.getElementById('mapPanel').classList.toggle('hidden', !hasChar);
   if(!hasChar){
     document.getElementById('adventureIntro').classList.add('hidden');
     document.getElementById('adventureBoard').classList.add('hidden');
+    document.getElementById('mySheetPanel').classList.add('hidden');
     return;
   }
   renderAdventure();
+  renderRoomMap();
+  if(!document.getElementById('mySheetPanel').classList.contains('hidden')) renderMySheet();
+}
+
+function renderMySheet(){
+  const c = partyCache && partyCache.characters[playerId];
+  if(!c){ document.getElementById('mySheetContent').innerHTML=''; return; }
+  const cd = CLASSES[c.cls];
+  const statsHtml = ABILS.map(a=>'<div class="stat-row"><span>'+ABIL_LABEL[a]+'</span><span class="stat-val">'+c.stats[a]+' ('+fmtMod(mod(c.stats[a]))+')</span></div>').join('');
+  document.getElementById('mySheetContent').innerHTML =
+    '<h3>'+c.name+' <span class="badge">Nivel '+c.level+'</span></h3>'+
+    '<p><em>'+RACES[c.race].name+' - '+cd.name+'</em></p>'+
+    '<div class="stat-row"><span>Vida</span><span class="stat-val">'+c.hp+' / '+c.maxHp+'</span></div>'+
+    '<div class="stat-row"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
+    '<div class="stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>'+
+    '<h4 style="margin-top:12px;">Atributos</h4>'+statsHtml+
+    '<h4 style="margin-top:12px;">Habilidad especial</h4><p class="small-note">'+cd.special+'</p>'+
+    '<h4 style="margin-top:12px;">Inventario</h4><p class="small-note">'+(c.inventory.length?c.inventory.join(', '):'(vacio)')+'</p>';
+}
+
+function renderRoomMap(){
+  const p = partyCache;
+  const mapEl = document.getElementById('roomMap');
+  const history = (p && p.roomHistory) || [];
+  if(!history.length){ mapEl.innerHTML = '<p class="small-note">Todavia no exploraste ninguna sala.</p>'; return; }
+  const activeScene = p.currentScene;
+  let html = '';
+  history.forEach((r, i)=>{
+    const isLast = i === history.length-1;
+    const isCurrent = isLast && !!activeScene;
+    html += '<div class="room-node '+(isCurrent?'current':'done')+'"><div class="dot">'+(ROOM_ICON[r.type]||'?')+'</div><div class="n">'+r.n+'</div></div>';
+    if(i < history.length-1) html += '<div class="room-connector"></div>';
+  });
+  mapEl.innerHTML = html;
 }
 
 function renderAdventure(){
@@ -389,8 +467,10 @@ function renderAdventure(){
   const myTurn = activePlayer === playerId;
 
   renderLog();
+  renderRoomMap();
 
   if(p.status==='idle' || !p.currentScene){
+    clearPendingAction();
     introEl.classList.remove('hidden');
     boardEl.classList.add('hidden');
     document.getElementById('partyTurnInfo').textContent = myTurn || !activeName
@@ -411,6 +491,7 @@ function renderAdventure(){
 
   const enemyBlock = document.getElementById('enemyBlock');
   const choicesDiv = document.getElementById('choices');
+  const rollPrompt = document.getElementById('rollPrompt');
   choicesDiv.innerHTML = '';
 
   if(sc.type==='combate' && sc.enemy){
@@ -418,24 +499,40 @@ function renderAdventure(){
     document.getElementById('enemyName').textContent = sc.enemy.name;
     document.getElementById('enemyHpText').textContent = Math.max(0,sc.enemy.hp)+' / '+sc.enemy.maxHp+' PV';
     document.getElementById('enemyHpBar').style.width = Math.max(0,(sc.enemy.hp/sc.enemy.maxHp)*100)+'%';
-    if(myTurn){
-      const myChar = p.characters[playerId];
-      const c = CLASSES[myChar.cls];
-      addChoice('Atacar', ()=>sendAction('attack'));
-      addChoice(c.special.split(':')[0], ()=>sendAction('special'), p.usedSpecialThisScene);
-      addChoice('Intentar huir', ()=>sendAction('flee'));
-    }
   } else {
     enemyBlock.classList.add('hidden');
-    if(myTurn){
-      if(sc.type==='hallazgo'){
-        addChoice('Recoger el hallazgo', ()=>sendAction('collect'));
-        addChoice('Seguir de largo', ()=>sendAction('skip'));
-      } else {
-        addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+sc.dc+')', ()=>sendAction('check'));
-        addChoice('Evitar la situacion', ()=>sendAction('skip'));
-      }
-    }
+  }
+
+  if(!myTurn){
+    rollPrompt.classList.add('hidden');
+    return;
+  }
+
+  if(pendingAction){
+    rollPrompt.classList.remove('hidden');
+    rollPrompt.innerHTML = '<span class="roll-highlight">El dado D20 esta brillando — tocalo para tirar tu accion.</span>';
+    addChoice('Cancelar', ()=>{ clearPendingAction(); renderAdventure(); });
+    return;
+  }
+  rollPrompt.classList.add('hidden');
+
+  const myChar = p.characters[playerId];
+
+  if(sc.type==='combate' && sc.enemy){
+    const cd = CLASSES[myChar.cls];
+    const hasPotion = myChar.inventory.includes('Pocion menor de curacion');
+    addChoice('Atacar', ()=>sendAction('attack'));
+    addChoice(cd.special.split(':')[0], ()=>sendAction('special'), p.usedSpecialThisScene);
+    addChoice('Defenderse (reduce el daño que recibis)', ()=>sendAction('defend'));
+    addChoice('Beber pocion de curacion', ()=>sendAction('usepotion'), !hasPotion);
+    addChoice('Intentar huir', ()=>sendAction('flee'));
+  } else if(sc.type==='hallazgo'){
+    addChoice('Recoger el hallazgo', ()=>sendAction('collect'));
+    addChoice('Seguir de largo', ()=>sendAction('skip'));
+  } else {
+    addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+sc.dc+')', ()=>sendAction('check'));
+    addChoice('Probar otro enfoque (mas dificil)', ()=>sendAction('check_alt'));
+    addChoice('Evitar la situacion', ()=>sendAction('skip'));
   }
 }
 
@@ -450,7 +547,16 @@ function addChoice(label, fn, disabled){
 
 function sendAction(kind){
   if(!currentCode) return;
+  if(ROLL_REQUIRED_KINDS.includes(kind)){
+    requestRoll(kind);
+    return;
+  }
   socket.emit('action', {code: currentCode, playerId, kind});
+}
+
+function sendActionWithRoll(kind, clientRoll){
+  if(!currentCode) return;
+  socket.emit('action', {code: currentCode, playerId, kind, clientRoll});
 }
 
 function renderLog(){

@@ -6,14 +6,25 @@ chat al instante) y un servidor propio con Node.js + Socket.io.
 
 ## Qué incluye
 
-- Creación de personaje (raza, clase, atributos con dados, historia de origen).
+- Creación de personaje: 10 clases clásicas de D&D (Guerrero, Mago, Pícaro,
+  Clérigo, Bárbaro, Explorador, Paladín, Bardo, Druida, Monje), 6 razas,
+  atributos con dados, historia de origen generada.
 - Guía rápida de reglas (atributos, iniciativa, combate).
-- Tirador de dados libre (d4 a d100).
+- **Vos tirás los dados**: cuando una acción necesita una tirada, el botón
+  D20 flotante se ilumina — lo tocás vos y ese resultado decide la acción.
+- Hoja de personaje accesible en cualquier momento desde la pestaña Aventura
+  (vida, CA, atributos, inventario, habilidad especial).
+- Mapa de progreso: vas viendo las salas que tu fiesta ya recorrió y de qué
+  tipo fue cada una.
+- Más variedad de acciones en combate: Atacar, Habilidad especial,
+  Defenderse (reduce el daño que recibís), beber Poción de curación, o
+  Intentar huir. En escenas no-combate podés intentar el enfoque sugerido
+  o probar uno alternativo (más difícil, pero distinto).
 - Fiesta: entrás con un código y te sincronizás en vivo con quien más
   esté con ese mismo código — sin copiar ni pegar nada.
 - Chat en vivo dentro de la fiesta.
-- Aventura cooperativa por turnos: combate, encuentros sociales, trampas
-  y hallazgos, con iniciativa real (d20 + Destreza) al empezar cada combate.
+- Aventura cooperativa por turnos, con iniciativa real (d20 + Destreza)
+  al empezar cada combate.
 
 ## Cómo probarlo en tu computadora (antes de subirlo a internet)
 
