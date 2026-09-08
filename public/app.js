@@ -445,83 +445,69 @@ const ROOM_NAME = {
   combate:'Camara de Combate', social:'Salon de Encuentro', exploracion:'Corredor Antiguo',
   trampa:'Camara de Trampas', hallazgo:'Boveda del Tesoro'
 };
-const ROOM_TINT = {
-  combate:'rgba(138,43,30,0.18)', social:'rgba(30,92,74,0.18)', exploracion:'rgba(163,120,31,0.14)',
-  trampa:'rgba(120,40,140,0.16)', hallazgo:'rgba(217,165,61,0.20)'
-};
 
-// Plano fijo de 10 salas en forma de serpiente (2 filas x 5), con pasillos entre ellas.
-function buildDungeonLayout(){
-  const roomW=138, roomH=104, gapX=36, padX=26, rowGap=42;
-  const y0=22, y1=y0+roomH+rowGap;
-  const rooms=[];
-  for(let i=0;i<5;i++) rooms.push({x: padX+i*(roomW+gapX), y:y0, w:roomW, h:roomH});
-  for(let i=0;i<5;i++) rooms.push({x: padX+(4-i)*(roomW+gapX), y:y1, w:roomW, h:roomH});
-  const corridors=[];
-  for(let i=0;i<9;i++){
-    const a=rooms[i], b=rooms[i+1];
-    if(a.y===b.y){
-      const left = Math.min(a.x+a.w, b.x+b.w), right = Math.max(a.x, b.x);
-      const x1=Math.min(a.x+a.w,b.x+b.w), x2=Math.max(a.x,b.x);
-      corridors.push({x:x1, y:a.y+a.h/2-12, w:x2-x1, h:24});
-    } else {
-      corridors.push({x:a.x+a.w/2-12, y:a.y+a.h, w:24, h:b.y-(a.y+a.h)});
-    }
-  }
-  const width = padX*2 + 5*roomW + 4*gapX;
-  const height = y1+roomH+20;
-  return {rooms, corridors, width, height};
+// Puntos fijos sobre TU imagen de mapa (public/dungeon-map.jpg), en % del ancho/alto.
+// Cada nueva sala explorada ocupa el siguiente punto de este camino.
+const MAP_POINTS = [
+  {x:6,  y:9,  label:'Entrada de la escalera'},
+  {x:13, y:23, label:'Guardia de gargolas'},
+  {x:11, y:39, label:'Estudio de la alfombra roja'},
+  {x:4,  y:51, label:'Camara lateral'},
+  {x:14, y:71, label:'Caverna del pantano'},
+  {x:42, y:47, label:'Cruce del puente'},
+  {x:40, y:17, label:'Gran salon del banquete'},
+  {x:61, y:23, label:'Camara de los sarcofagos'},
+  {x:79, y:11, label:'Circulo ritual'},
+  {x:83, y:46, label:'Cueva de la cascada'}
+];
+
+function ensureMapDom(){
+  const mapEl = document.getElementById('roomMap');
+  if(document.getElementById('mapImg')) return; // ya existe, no recrear (asi el token no pierde su animacion)
+  mapEl.innerHTML =
+    '<div id="mapWrap" style="position:relative;">'+
+      '<img id="mapImg" src="/dungeon-map.jpg" alt="Mapa de la cripta" style="width:100%;display:block;border-radius:8px;border:2px solid var(--border);">'+
+      '<div id="mapPins" style="position:absolute;inset:0;"></div>'+
+      '<div id="mapToken" class="map-token-el" style="display:none;"><span id="mapTokenIcon">🧭</span></div>'+
+    '</div>';
 }
-const DUNGEON_LAYOUT = buildDungeonLayout();
 
 function renderRoomMap(){
   const p = partyCache;
-  const mapEl = document.getElementById('roomMap');
   const history = (p && p.roomHistory) || [];
-  if(!history.length){ mapEl.innerHTML = '<p class="small-note">Todavia no exploraste ninguna sala.</p>'; return; }
+  if(!history.length){
+    document.getElementById('roomMap').innerHTML = '<p class="small-note">Todavia no exploraste ninguna sala.</p>';
+    return;
+  }
+  ensureMapDom();
   const activeScene = p.currentScene;
-  const { rooms, corridors, width, height } = DUNGEON_LAYOUT;
-  const n = Math.min(history.length, rooms.length);
+  const visited = Math.min(history.length, MAP_POINTS.length);
+  const hasCurrent = !!activeScene;
+  const currentIdx = hasCurrent ? visited-1 : -1;
 
-  let svg = '<svg viewBox="0 0 '+width+' '+height+'" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">';
-  svg += '<defs><pattern id="floorGrid" width="14" height="14" patternUnits="userSpaceOnUse">'+
-         '<rect width="14" height="14" fill="none"/><path d="M 14 0 L 0 0 0 14" fill="none" stroke="var(--border)" stroke-width="0.6" opacity="0.5"/>'+
-         '</pattern></defs>';
-
-  // pasillos conectando las salas ya visitadas
-  for(let i=0;i<n-1;i++){
-    const c = corridors[i];
-    svg += '<rect x="'+c.x+'" y="'+c.y+'" width="'+c.w+'" height="'+c.h+'" fill="var(--bg-panel-2)" stroke="var(--border)" stroke-width="2"/>';
-  }
-
-  for(let i=0;i<n;i++){
-    const r = rooms[i];
+  // pines de las salas ya recorridas
+  let pinsHtml = '';
+  for(let i=0;i<visited;i++){
+    if(i===currentIdx) continue; // esa la marca el token, no un pin
+    const pt = MAP_POINTS[i];
     const hist = history[i];
-    const isLast = i === n-1;
-    const isCurrent = isLast && !!activeScene && n === history.length;
-    const tint = ROOM_TINT[hist.type] || 'transparent';
-    const strokeColor = isCurrent ? 'var(--accent-3)' : 'var(--border)';
-    const strokeW = isCurrent ? 4 : 2.5;
-    const cx = r.x+r.w/2, cy = r.y+r.h/2;
-
-    svg += '<g>';
-    svg += '<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" fill="url(#floorGrid)" stroke="'+strokeColor+'" stroke-width="'+strokeW+'"/>';
-    svg += '<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" fill="'+tint+'"/>';
-    if(isCurrent){
-      svg += '<rect x="'+(r.x+2)+'" y="'+(r.y+2)+'" width="'+(r.w-4)+'" height="'+(r.h-4)+'" fill="none" stroke="var(--accent-3)" stroke-width="2" opacity="0.7" class="map-halo"/>';
-    }
-    svg += '<text x="'+cx+'" y="'+(r.y+30)+'" text-anchor="middle" font-size="26">'+(ROOM_ICON[hist.type]||'?')+'</text>';
-    svg += '<text x="'+cx+'" y="'+(r.y+r.h-30)+'" text-anchor="middle" font-size="11" fill="var(--ink)" font-weight="bold">'+(ROOM_NAME[hist.type]||'Sala')+'</text>';
-    svg += '<text x="'+cx+'" y="'+(r.y+r.h-14)+'" text-anchor="middle" font-size="10" fill="var(--ink-soft)">Sala '+hist.n+'</text>';
-    if(isCurrent){
-      svg += '<circle cx="'+cx+'" cy="'+(r.y+r.h-52)+'" r="7" fill="var(--accent-3)" class="map-token"/>';
-      svg += '<text x="'+cx+'" y="'+(r.y+r.h-48)+'" text-anchor="middle" font-size="10" fill="#241a08">▲</text>';
-    }
-    svg += '</g>';
+    pinsHtml += '<div class="map-pin" style="left:'+pt.x+'%;top:'+pt.y+'%;" title="Sala '+hist.n+': '+(ROOM_NAME[hist.type]||'')+' — '+pt.label+'">'+(ROOM_ICON[hist.type]||'?')+'</div>';
   }
+  document.getElementById('mapPins').innerHTML = pinsHtml;
 
-  svg += '</svg>';
-  mapEl.innerHTML = svg;
+  // token: se desliza sobre la imagen (misma pieza del DOM, por eso anima)
+  const tokenEl = document.getElementById('mapToken');
+  if(currentIdx>=0){
+    const pt = MAP_POINTS[currentIdx];
+    const hist = history[currentIdx];
+    tokenEl.style.left = pt.x+'%';
+    tokenEl.style.top = pt.y+'%';
+    tokenEl.style.display = 'flex';
+    tokenEl.title = 'Sala '+hist.n+': '+(ROOM_NAME[hist.type]||'')+' — '+pt.label;
+    document.getElementById('mapTokenIcon').textContent = ROOM_ICON[hist.type]||'🧭';
+  } else {
+    tokenEl.style.display = 'none';
+  }
 }
 
 function renderAdventure(){
