@@ -26,6 +26,7 @@ const CLASSES = {
 
 const ALT_ABIL_BY_TYPE = { social:'FUE', exploracion:'FUE', trampa:'INT' };
 const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰' };
+const MAP_POINTS_LEN = 10; // debe coincidir con MAP_POINTS.length en public/app.js
 
 const ENEMIES = [
   {name:'Rata gigante', hp:9, ac:11, atk:2, dmg:[1,4], xp:15, init:2},
@@ -216,6 +217,10 @@ function startTurnForPlayer(party, playerId){
   party.roomHistory = (party.roomHistory||[]);
   party.roomHistory.push({type: scene.type, n: party.totalRooms});
   if(party.roomHistory.length > 10) party.roomHistory.shift();
+
+  // avanza el token de ESTE jugador en el mapa (cada personaje tiene su propia posicion)
+  myChar.mapPos = (typeof myChar.mapPos==='number' && myChar.mapPos>=0) ? (myChar.mapPos+1) % MAP_POINTS_LEN : 0;
+  myChar.lastRoomType = scene.type;
 
   if(scene.type==='combate'){
     const playerRoll = rollDie(20);
@@ -413,7 +418,10 @@ io.on('connection', (socket)=>{
   socket.on('publish_character', ({code, playerId, character})=>{
     code = sanitizeCode(code);
     const party = getParty(code);
+    const existing = party.characters[playerId];
     character.playerId = playerId;
+    character.mapPos = existing ? existing.mapPos : -1;
+    character.lastRoomType = existing ? existing.lastRoomType : null;
     party.characters[playerId] = character;
     pushLog(party, 'sys', (character.name||'Un jugador')+' se unio a la fiesta.');
     broadcastParty(code);

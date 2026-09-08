@@ -447,7 +447,7 @@ const ROOM_NAME = {
 };
 
 // Puntos fijos sobre TU imagen de mapa (public/dungeon-map.jpg), en % del ancho/alto.
-// Cada nueva sala explorada ocupa el siguiente punto de este camino.
+// Cada nueva sala que un jugador explora avanza SU PROPIO token al siguiente punto.
 const MAP_POINTS = [
   {x:6,  y:9,  label:'Entrada de la escalera'},
   {x:13, y:23, label:'Guardia de gargolas'},
@@ -460,54 +460,63 @@ const MAP_POINTS = [
   {x:79, y:11, label:'Circulo ritual'},
   {x:83, y:46, label:'Cueva de la cascada'}
 ];
+const TOKEN_COLORS = ['#d9a53d','#3fae8c','#d1543f','#7a9fd9','#c76bd9','#8fd93f'];
+function colorForPlayer(playerId){
+  let h=0; for(let i=0;i<playerId.length;i++) h=(h*31+playerId.charCodeAt(i))>>>0;
+  return TOKEN_COLORS[h % TOKEN_COLORS.length];
+}
 
 function ensureMapDom(){
   const mapEl = document.getElementById('roomMap');
-  if(document.getElementById('mapImg')) return; // ya existe, no recrear (asi el token no pierde su animacion)
+  if(document.getElementById('mapImg')) return; // ya existe, no recrear (asi los tokens no pierden su animacion)
   mapEl.innerHTML =
     '<div id="mapWrap" style="position:relative;">'+
       '<img id="mapImg" src="/dungeon-map.jpg" alt="Mapa de la cripta" style="width:100%;display:block;border-radius:8px;border:2px solid var(--border);">'+
-      '<div id="mapPins" style="position:absolute;inset:0;"></div>'+
-      '<div id="mapToken" class="map-token-el" style="display:none;"><span id="mapTokenIcon">🧭</span></div>'+
+      '<div id="mapTokens" style="position:absolute;inset:0;"></div>'+
     '</div>';
 }
 
 function renderRoomMap(){
   const p = partyCache;
-  const history = (p && p.roomHistory) || [];
-  if(!history.length){
+  const chars = (p && p.characters) || {};
+  const ids = Object.keys(chars).filter(id => typeof chars[id].mapPos === 'number' && chars[id].mapPos >= 0);
+  if(!ids.length){
     document.getElementById('roomMap').innerHTML = '<p class="small-note">Todavia no exploraste ninguna sala.</p>';
     return;
   }
   ensureMapDom();
-  const activeScene = p.currentScene;
-  const visited = Math.min(history.length, MAP_POINTS.length);
-  const hasCurrent = !!activeScene;
-  const currentIdx = hasCurrent ? visited-1 : -1;
 
-  // pines de las salas ya recorridas
-  let pinsHtml = '';
-  for(let i=0;i<visited;i++){
-    if(i===currentIdx) continue; // esa la marca el token, no un pin
-    const pt = MAP_POINTS[i];
-    const hist = history[i];
-    pinsHtml += '<div class="map-pin" style="left:'+pt.x+'%;top:'+pt.y+'%;" title="Sala '+hist.n+': '+(ROOM_NAME[hist.type]||'')+' — '+pt.label+'">'+(ROOM_ICON[hist.type]||'?')+'</div>';
-  }
-  document.getElementById('mapPins').innerHTML = pinsHtml;
+  const turnOrder = (p.turnOrder && p.turnOrder.length) ? p.turnOrder : Object.keys(chars).sort();
+  const activePlayerId = (p.currentScene && turnOrder.length) ? turnOrder[p.turnIndex % turnOrder.length] : null;
 
-  // token: se desliza sobre la imagen (misma pieza del DOM, por eso anima)
-  const tokenEl = document.getElementById('mapToken');
-  if(currentIdx>=0){
-    const pt = MAP_POINTS[currentIdx];
-    const hist = history[currentIdx];
-    tokenEl.style.left = pt.x+'%';
-    tokenEl.style.top = pt.y+'%';
-    tokenEl.style.display = 'flex';
-    tokenEl.title = 'Sala '+hist.n+': '+(ROOM_NAME[hist.type]||'')+' — '+pt.label;
-    document.getElementById('mapTokenIcon').textContent = ROOM_ICON[hist.type]||'🧭';
-  } else {
-    tokenEl.style.display = 'none';
-  }
+  const container = document.getElementById('mapTokens');
+  // sacar tokens de jugadores que ya no existen (raro, pero por las dudas)
+  Array.from(container.children).forEach(el=>{
+    const id = el.dataset.playerId;
+    if(id && !ids.includes(id)) el.remove();
+  });
+
+  ids.forEach(id=>{
+    const c = chars[id];
+    const pt = MAP_POINTS[c.mapPos];
+    const isActive = id === activePlayerId;
+    let el = container.querySelector('[data-player-id="'+CSS.escape(id)+'"]');
+    if(!el){
+      el = document.createElement('div');
+      el.dataset.playerId = id;
+      el.className = 'map-token-el';
+      container.appendChild(el);
+    }
+    el.style.left = pt.x+'%';
+    el.style.top = pt.y+'%';
+    el.style.borderColor = isActive ? 'var(--accent-3)' : colorForPlayer(id);
+    el.style.background = isActive
+      ? 'radial-gradient(circle, var(--accent-3), #a3781f)'
+      : 'radial-gradient(circle, '+colorForPlayer(id)+', #241a08)';
+    el.classList.toggle('map-token-active', isActive);
+    el.innerHTML = '<span>'+(isActive ? (ROOM_ICON[c.lastRoomType]||'🧭') : (c.name||'?').charAt(0).toUpperCase())+'</span>';
+    el.title = c.name+' — Sala '+(c.mapPos+1)+': '+pt.label+(c.lastRoomType?(' ('+(ROOM_NAME[c.lastRoomType]||'')+')'):'');
+  });
 }
 
 function renderAdventure(){
