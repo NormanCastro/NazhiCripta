@@ -691,7 +691,7 @@ const MAP_POINTS = [
   {x:83, y:46, label:'Celdas', image:'/scenes/room10-celdas.jpg'}
 ];
 const DOOR_SCENE_IMAGE = '/scenes/escena-puerta-cerrada.jpg';
-const TOKEN_COLORS = ['#d9a53d','#3fae8c','#d1543f','#7a9fd9','#c76bd9','#8fd93f'];
+const TOKEN_COLORS = ['#39ff8c','#22d3ee','#ff3b5c','#c084fc','#facc15','#38bdf8'];
 function colorForPlayer(playerId){
   let h=0; for(let i=0;i<playerId.length;i++) h=(h*31+playerId.charCodeAt(i))>>>0;
   return TOKEN_COLORS[h % TOKEN_COLORS.length];
@@ -768,7 +768,7 @@ function renderRoomMap(){
     el.style.borderColor = isActive ? 'var(--accent-3)' : colorForPlayer(id);
     el.style.background = isActive
       ? 'radial-gradient(circle, var(--accent-3), #0f3d22)'
-      : 'radial-gradient(circle, '+colorForPlayer(id)+', #08130c)';
+      : 'radial-gradient(circle, '+colorForPlayer(id)+', #03150a)';
     el.classList.toggle('map-token-active', isActive);
     el.innerHTML = '<span>'+(isActive ? (ROOM_ICON[c.lastRoomType]||'🧭') : (c.name||'?').charAt(0).toUpperCase())+'</span>';
     el.title = c.name+' — Sala '+(c.mapPos+1)+': '+pt.label+(c.lastRoomType?(' ('+(ROOM_NAME[c.lastRoomType]||'')+')'):'');

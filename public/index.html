@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cripta de Nazhi — Multijugador en vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -11,6 +14,24 @@
 <div class="app-shell">
   <aside class="sidebar" id="charSidebar">
     <div class="panel" id="charCardPanel"><p class="small-note">Publicá tu personaje en la pestaña Fiesta para verlo aca, siempre a mano.</p></div>
+
+    <div class="panel" id="partyCardPanel"></div>
+
+    <div class="panel">
+      <div class="quick-buttons">
+        <button class="quick-btn" id="btnHabilidades"><span class="qb-icon">✨</span><span>Habilidades</span></button>
+        <button class="quick-btn" id="btnInventario"><span class="qb-icon">🎒</span><span>Inventario</span></button>
+        <button class="quick-btn" id="btnHoja"><span class="qb-icon">📜</span><span>Hoja de PJ</span></button>
+      </div>
+      <div class="panel hidden" id="quickSubPanel" style="margin:10px 0 0 0;"></div>
+    </div>
+
+    <div class="panel">
+      <h3 style="margin:0 0 10px 0;">Dado</h3>
+      <div class="d20-display">
+        <div class="d20-shape" id="d20Shape"><span id="d20Value">-</span></div>
+      </div>
+    </div>
   </aside>
 
   <div class="main-col">
@@ -156,7 +177,7 @@
       <p>Primero creá un personaje en la pestaña Personaje, y publicalo en la pestaña Fiesta.</p>
     </div>
 
-    <div class="adventure-grid hidden" id="adventureLayout">
+    <div class="adventure-layout hidden" id="adventureLayout">
       <div>
         <div class="panel" id="viewerPanel">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
@@ -208,24 +229,6 @@
           <div style="display:flex;gap:6px;margin-top:8px;">
             <input type="text" id="chatInputAdv" placeholder="Hablá con tu grupo, o decí que queres hacer..." maxlength="500" style="flex:1;">
             <button class="action gold" id="chatSendBtnAdv">Enviar</button>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <div class="panel" id="partyCardPanel"></div>
-        <div class="panel">
-          <div class="quick-buttons">
-            <button class="quick-btn" id="btnHabilidades"><span class="qb-icon">✨</span><span>Habilidades</span></button>
-            <button class="quick-btn" id="btnInventario"><span class="qb-icon">🎒</span><span>Inventario</span></button>
-            <button class="quick-btn" id="btnHoja"><span class="qb-icon">📜</span><span>Hoja de PJ</span></button>
-          </div>
-          <div class="panel hidden" id="quickSubPanel" style="margin:10px 0 0 0;"></div>
-        </div>
-        <div class="panel">
-          <h3 style="margin:0 0 10px 0;">Dado</h3>
-          <div class="d20-display">
-            <div class="d20-shape" id="d20Shape"><span id="d20Value">-</span></div>
           </div>
         </div>
       </div>
