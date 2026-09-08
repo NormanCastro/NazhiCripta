@@ -238,7 +238,7 @@ const dicePanel = document.getElementById('dicePanel');
 const diceFab = document.getElementById('diceFab');
 diceFab.addEventListener('click', ()=> dicePanel.classList.toggle('hidden'));
 let selDie = 20;
-let pendingAction = null; // {kind} cuando una accion espera que tiremos 1d20
+let pendingAction = null; // {kind, adv:'adv'|'disadv'|'normal'}
 const diceTypeGrid = document.getElementById('diceTypeGrid');
 [4,6,8,10,12,20,100].forEach(d=>{
   const b = document.createElement('button');
@@ -253,16 +253,40 @@ const diceTypeGrid = document.getElementById('diceTypeGrid');
   diceTypeGrid.appendChild(b);
 });
 
+// Ventaja/Desventaja (regla real de D&D): con Ventaja se tiran 2d20 y se usa el mayor;
+// con Desventaja, 2d20 y se usa el menor. Si aplicaran ambas a la vez, se cancelan y es tirada normal.
+function computeAdvantage(kind){
+  const p = partyCache;
+  const myChar = p && p.characters[playerId];
+  if(!myChar) return 'normal';
+  let hasAdv = false, hasDisadv = false;
+
+  // Desventaja: atacar o actuar mal herido (menos de 25% de vida) - manos temblorosas
+  if(myChar.hp <= myChar.maxHp * 0.25) hasDisadv = true;
+
+  // Ventaja: el Picaro golpeando por sorpresa (su primer golpe en el combate)
+  if(kind==='attack' && myChar.cls==='picaro' && p.sceneFirstHit) hasAdv = true;
+
+  if(hasAdv && hasDisadv) return 'normal';
+  if(hasAdv) return 'adv';
+  if(hasDisadv) return 'disadv';
+  return 'normal';
+}
+
 function requestRoll(kind){
-  pendingAction = { kind };
+  const adv = computeAdvantage(kind);
+  pendingAction = { kind, adv };
   selDie = 20;
   diceTypeGrid.querySelectorAll('button').forEach(x=>x.classList.remove('sel'));
   diceTypeGrid.querySelectorAll('button')[5].classList.add('sel'); // d20 es el 6to boton (index 5)
-  document.getElementById('diceQty').value = 1;
+  document.getElementById('diceQty').value = adv==='normal' ? 1 : 2;
   document.getElementById('diceQty').disabled = true;
   diceFab.classList.add('glow');
   dicePanel.classList.remove('hidden');
-  document.getElementById('diceResult').innerHTML = '<p class="roll-highlight">Tirá el D20 para resolver tu accion.</p>';
+  let msg = 'Tirá el D20 para resolver tu accion.';
+  if(adv==='adv') msg = '<span class="roll-highlight">¡Tenés VENTAJA!</span> Se tiran 2d20 y se usa el mayor.';
+  else if(adv==='disadv') msg = '<span style="color:var(--accent);font-weight:bold;">Tenés DESVENTAJA</span> (mal herido). Se tiran 2d20 y se usa el menor.';
+  document.getElementById('diceResult').innerHTML = '<p>'+msg+'</p>';
   renderAdventure();
 }
 function clearPendingAction(){
@@ -272,28 +296,38 @@ function clearPendingAction(){
 }
 
 document.getElementById('diceRollBtn').addEventListener('click', ()=>{
-  const qty = pendingAction ? 1 : Math.max(1, Math.min(20, parseInt(document.getElementById('diceQty').value)||1));
+  const adv = pendingAction ? pendingAction.adv : 'normal';
+  const qty = pendingAction ? (adv==='normal' ? 1 : 2) : Math.max(1, Math.min(20, parseInt(document.getElementById('diceQty').value)||1));
   const die = pendingAction ? 20 : selDie;
   const modv = parseInt(document.getElementById('diceMod').value)||0;
   const rolls = rollMultiple(qty, die);
   const total = rolls.reduce((s,v)=>s+v,0) + modv;
+
+  // valor efectivo que se usa para resolver la accion pendiente
+  let effective = rolls[0];
+  let advNote = '';
+  if(pendingAction && die===20){
+    if(adv==='adv'){ effective = Math.max(...rolls); advNote = ' (Ventaja: se usa el mayor, '+effective+')'; }
+    else if(adv==='disadv'){ effective = Math.min(...rolls); advNote = ' (Desventaja: se usa el menor, '+effective+')'; }
+  }
+
   let flair = '';
-  if(die===20 && qty===1){
-    if(rolls[0]===20) flair = '<div class="roll-highlight">¡NATURAL 20 — CRITICO!</div>';
-    else if(rolls[0]===1) flair = '<div style="color:var(--accent);font-weight:bold;">¡NATURAL 1 — PIFIA!</div>';
-    renderDiceBox(rolls[0]);
+  if(die===20 && (qty===1 || pendingAction)){
+    if(effective===20) flair = '<div class="roll-highlight">¡NATURAL 20 — CRITICO!</div>';
+    else if(effective===1) flair = '<div style="color:var(--accent);font-weight:bold;">¡NATURAL 1 — PIFIA!</div>';
+    renderDiceBox(effective);
   }
   document.getElementById('diceResult').innerHTML =
     '<div><strong>'+qty+'d'+die+(modv? fmtMod(modv):'')+'</strong></div>'+
-    '<div>Tiradas: '+rolls.join(', ')+'</div>'+
+    '<div>Tiradas: '+rolls.join(', ')+advNote+'</div>'+
     flair+
-    '<div style="font-size:1.3rem;color:var(--accent-3);font-weight:bold;">Total: '+total+'</div>';
+    '<div style="font-size:1.3rem;color:var(--accent-3);font-weight:bold;">Total: '+(effective+modv)+'</div>';
 
   if(pendingAction){
     const kind = pendingAction.kind;
     clearPendingAction();
     dicePanel.classList.add('hidden');
-    sendActionWithRoll(kind, rolls[0]);
+    sendActionWithRoll(kind, effective);
   }
 });
 
@@ -710,7 +744,10 @@ function renderAdventure(){
 
   if(pendingAction){
     rollPrompt.classList.remove('hidden');
-    rollPrompt.innerHTML = '<span class="roll-highlight">El dado D20 esta brillando — tocalo para tirar tu accion.</span>';
+    let advTag = '';
+    if(pendingAction.adv==='adv') advTag = ' <strong style="color:var(--accent-2);">(con Ventaja)</strong>';
+    else if(pendingAction.adv==='disadv') advTag = ' <strong style="color:var(--accent);">(con Desventaja)</strong>';
+    rollPrompt.innerHTML = '<span class="roll-highlight">El dado D20 esta brillando — tocalo para tirar tu accion.</span>'+advTag;
     addChoice('Cancelar', ()=>{ clearPendingAction(); renderAdventure(); });
     return;
   }

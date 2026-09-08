@@ -70,7 +70,7 @@
         </div>
         <div class="card">
           <h3>Ventaja y Desventaja</h3>
-          <p>Cuando algo te favorece, tirar con Ventaja significa tirar 2d20 y quedarte con el mas alto. Cuando algo te complica, la Desventaja es tirar 2d20 y quedarte con el mas bajo. Truco: pod\u00e9s simular esto vos mismo con el tirador libre, poniendo cantidad en 2 y dado d20, y eligiendo el resultado que corresponda.</p>
+          <p>Ya es una mecanica real del juego, no solo un tip: cuando algo te favorece, el juego tira 2d20 solo y usa el mas alto (Ventaja). Cuando algo te complica —como estar mal herido, con menos de 25% de vida— tira 2d20 y usa el mas bajo (Desventaja). Si por algun motivo te tocaran ambas a la vez, se cancelan entre si y queda una tirada normal. El Picaro ademas gana Ventaja en su primer golpe del combate (ataca por sorpresa).</p>
         </div>
         <div class="card">
           <h3>Tip de mesa</h3>
@@ -157,7 +157,7 @@
       <p>Primero creá un personaje en la pestaña Personaje, y publicalo en la pestaña Fiesta.</p>
     </div>
 
-    <div class="two-col hidden" id="adventureLayout">
+    <div class="adventure-grid hidden" id="adventureLayout">
       <div>
         <div class="panel" id="viewerPanel">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
@@ -201,17 +201,18 @@
           <div id="turnStrip" class="turn-strip"></div>
         </div>
 
-        <div class="panel">
-          <h3>Bitacora</h3>
-          <div class="log" id="advLog"></div>
-        </div>
-
-        <div class="panel">
-          <h3>Chat de la fiesta</h3>
-          <div class="log" id="chatLogAdv" style="max-height:180px;"></div>
-          <div style="display:flex;gap:6px;margin-top:8px;">
-            <input type="text" id="chatInputAdv" placeholder="Escribi un mensaje..." maxlength="500" style="flex:1;">
-            <button class="action gold" id="chatSendBtnAdv">Enviar</button>
+        <div class="two-col">
+          <div class="panel">
+            <h3>Bitacora</h3>
+            <div class="log" id="advLog"></div>
+          </div>
+          <div class="panel">
+            <h3>Chat de la fiesta</h3>
+            <div class="log" id="chatLogAdv" style="max-height:280px;"></div>
+            <div style="display:flex;gap:6px;margin-top:8px;">
+              <input type="text" id="chatInputAdv" placeholder="Escribi un mensaje..." maxlength="500" style="flex:1;">
+              <button class="action gold" id="chatSendBtnAdv">Enviar</button>
+            </div>
           </div>
         </div>
       </div>
@@ -249,7 +250,7 @@
   <input type="number" id="diceMod" value="0">
   <button class="action" id="diceRollBtn" style="width:100%;margin-top:10px;">Tirar</button>
   <div id="diceResult" style="margin-top:10px;font-size:0.95rem;"></div>
-  <p class="small-note" style="margin-top:10px;border-top:1px dashed var(--border);padding-top:8px;">Tip: 20 natural = exito automatico (y critico en combate). 1 natural = fallo automatico. Para Ventaja/Desventaja, poné Cantidad en 2 con d20 y quedate con el mas alto (Ventaja) o el mas bajo (Desventaja).</p>
+  <p class="small-note" style="margin-top:10px;border-top:1px dashed var(--border);padding-top:8px;">Tip: 20 natural = exito automatico (y critico en combate). 1 natural = fallo automatico. La Ventaja y la Desventaja ya son automaticas cuando aplican (mal herido, Picaro atacando por sorpresa): el juego te pide 2d20 solo.</p>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>

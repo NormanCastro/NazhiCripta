@@ -30,7 +30,7 @@ body{
   min-height:100vh; padding-bottom:40px;
 }
 h1,h2,h3,h4{font-family:var(--font-head); color:var(--accent); margin:0 0 8px 0;}
-.wrap{max-width:980px;margin:0 auto;padding:16px;}
+.wrap{max-width:1360px;margin:0 auto;padding:16px;}
 header.top{
   display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;
   padding:14px 16px;background:var(--bg-panel);border-bottom:3px solid var(--border);
@@ -113,6 +113,10 @@ input[type=text],input[type=number],select{
 .center{text-align:center;}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 @media(max-width:640px){.two-col{grid-template-columns:1fr;}}
+
+.adventure-grid{display:grid;grid-template-columns:2.6fr 1fr;gap:16px;align-items:start;}
+@media(max-width:900px){.adventure-grid{grid-template-columns:1fr;}}
+.log-tall{max-height:480px;}
 ol.guide-list li{margin-bottom:10px;line-height:1.5;}
 .chat-msg{margin-bottom:6px;}
 .chat-msg .who{font-weight:bold;color:var(--accent-2);}
