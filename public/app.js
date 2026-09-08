@@ -632,8 +632,12 @@ function renderQuickPanel(){
   const cd = CLASSES[c.cls];
   if(quickPanelMode==='habilidades'){
     const statsHtml = ABILS.map(a=>'<div class="stat-row"><span>'+ABIL_LABEL[a]+'</span><span class="stat-val">'+c.stats[a]+' ('+fmtMod(mod(c.stats[a]))+')</span></div>').join('');
+    const specialName = cd.special.split(':')[0];
+    const specialDesc = cd.special.split(':').slice(1).join(':').trim();
     panel.innerHTML = '<h4 style="margin:0 0 6px 0;">Arma</h4><p class="small-note">'+cd.weapon+' — daño d'+cd.weaponDie+'</p>'+
-      '<h4 style="margin:10px 0 4px 0;">Habilidad especial</h4><p class="small-note">'+cd.special+'</p>'+
+      '<h4 style="margin:10px 0 4px 0;">Habilidad especial</h4>'+
+      '<p style="margin:0 0 2px 0;font-weight:bold;color:var(--accent-2);">'+specialName+'</p>'+
+      '<p class="small-note" style="margin:0;">'+specialDesc+'</p>'+
       '<h4 style="margin:10px 0 4px 0;">Atributos</h4>'+statsHtml;
   } else if(quickPanelMode==='inventario'){
     const hasRations = c.inventory.includes('Raciones de viaje');
@@ -691,7 +695,7 @@ const MAP_POINTS = [
   {x:83, y:46, label:'Celdas', image:'/scenes/room10-celdas.jpg'}
 ];
 const DOOR_SCENE_IMAGE = '/scenes/escena-puerta-cerrada.jpg';
-const TOKEN_COLORS = ['#39ff8c','#22d3ee','#ff3b5c','#c084fc','#facc15','#38bdf8'];
+const TOKEN_COLORS = ['#00FF00','#22d3ee','#ff3b5c','#c084fc','#facc15','#38bdf8'];
 function colorForPlayer(playerId){
   let h=0; for(let i=0;i<playerId.length;i++) h=(h*31+playerId.charCodeAt(i))>>>0;
   return TOKEN_COLORS[h % TOKEN_COLORS.length];
@@ -801,7 +805,7 @@ function renderCharCard(){
       '<div><div class="cc-name">'+c.name+'</div><div class="cc-sub">'+cd.name+' — Nivel '+c.level+'</div></div>'+
     '</div>'+
     '<div class="ring-legend">'+
-      '<span><span class="dot" style="background:'+hpBarColor(hpPct,downed)+';"></span>Vida: '+(downed?'Caido':(c.hp+'/'+c.maxHp))+'</span>'+
+      '<span><span class="dot" style="background:'+hpBarColor(hpPct,downed)+';"></span>❤️ Vida: '+(downed?'Caido':(c.hp+'/'+c.maxHp))+'</span>'+
       '<span><span class="dot" style="background:var(--accent-2);"></span>Especial: '+(specialReady?'Lista':'Usada')+'</span>'+
     '</div>'+
     '<div class="stat-row-mini stat-row" style="margin-top:8px;"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
@@ -926,10 +930,12 @@ function renderAdventure(){
     const HEAL_CLASSES = ['clerigo','bardo'];
     addChoice('Atacar', ()=>sendAction('attack'), false, 'attack');
     const specialUsed = !!(sc.usedSpecialBy && sc.usedSpecialBy.includes(playerId));
+    const specialName = cd.special.split(':')[0];
+    const specialDesc = cd.special.split(':').slice(1).join(':').trim();
     if(HEAL_CLASSES.includes(myChar.cls)){
-      addChoice(cd.special.split(':')[0], ()=>showHealTargetPicker(), specialUsed, 'special');
+      addChoice(specialName, ()=>showHealTargetPicker(), specialUsed, 'special', specialDesc);
     } else {
-      addChoice(cd.special.split(':')[0], ()=>sendAction('special'), specialUsed, 'special');
+      addChoice(specialName, ()=>sendAction('special'), specialUsed, 'special', specialDesc);
     }
     addChoice('Defenderse (reduce el daño que recibis)', ()=>sendAction('defend'), false, 'defend');
     addChoice('Usar pocion de curacion', ()=>showPotionTargetPicker(), !hasPotion, 'usepotion');
@@ -1082,10 +1088,14 @@ function renderTurnStrip(){
   }).join('');
 }
 
-function addChoice(label, fn, disabled, kind){
+function addChoice(label, fn, disabled, kind, subtitle){
   const btn = document.createElement('button');
   btn.className='choice-btn';
-  btn.textContent = label;
+  if(subtitle){
+    btn.innerHTML = '<span style="display:block;">'+label+'</span><span class="small-note" style="display:block;margin-top:2px;font-weight:normal;">'+subtitle+'</span>';
+  } else {
+    btn.textContent = label;
+  }
   if(kind) btn.dataset.kind = kind;
   if(disabled){ btn.disabled=true; btn.style.opacity=0.5; }
   btn.addEventListener('click', ()=>{ clearIntentHint(); fn(); });

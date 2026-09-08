@@ -1,28 +1,24 @@
 :root{
-  --bg:#050b07;
+  --bg:#000000;
   --bg-panel:#0a1811;
   --bg-panel-2:#0f2117;
   --ink:#e4fff0;
   --ink-soft:#6f9c81;
   --accent:#ff3b5c;
-  --accent-2:#39ff8c;
+  --accent-2:#00FF00;
   --accent-3:#22d3ee;
   --border:#163826;
   --shadow:rgba(0,0,0,0.7);
-  --glow-2:rgba(57,255,140,0.35);
+  --glow-2:rgba(0,255,0,0.35);
   --glow-3:rgba(34,211,238,0.35);
-  --font-head:'Orbitron','Segoe UI',sans-serif;
-  --font-body:'Rajdhani','Segoe UI',sans-serif;
+  --font-head:'Georgia','Palatino Linotype',serif;
+  --font-body:'Trebuchet MS','Segoe UI',sans-serif;
 }
 *{box-sizing:border-box;}
 body{
   margin:0; color:var(--ink); font-family:var(--font-body); font-size:1.05rem;
   min-height:100vh; padding-bottom:40px;
-  background:
-    radial-gradient(circle at 14% 10%, rgba(57,255,140,0.10), transparent 55%),
-    radial-gradient(circle at 90% 80%, rgba(34,211,238,0.07), transparent 55%),
-    var(--bg);
-  background-attachment:fixed;
+  background:var(--bg);
 }
 h1,h2,h3,h4{
   font-family:var(--font-head); color:var(--accent-2); margin:0 0 8px 0;
@@ -147,7 +143,8 @@ input[type=text]:focus,input[type=number]:focus,select:focus{outline:none;border
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 @media(max-width:640px){.two-col{grid-template-columns:1fr;}}
 
-.adventure-layout{display:block;}
+.adventure-layout{display:grid;grid-template-columns:2.6fr 1fr;gap:16px;align-items:start;}
+@media(max-width:900px){.adventure-layout{grid-template-columns:1fr;}}
 .log-tall{max-height:480px;}
 ol.guide-list li{margin-bottom:10px;line-height:1.5;}
 .chat-msg{margin-bottom:6px;}
