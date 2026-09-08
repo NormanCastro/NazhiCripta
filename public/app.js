@@ -390,27 +390,33 @@ document.getElementById('publishCharBtn').addEventListener('click', ()=>{
 /* ================= CHAT ================= */
 function renderChat(){
   if(!partyCache) return;
-  const log = document.getElementById('chatLog');
-  log.innerHTML = (partyCache.chat||[]).map(m=>{
+  const html = (partyCache.chat||[]).map(m=>{
     const mine = m.playerId===playerId ? ' me' : '';
     return '<div class="chat-msg'+mine+'"><span class="who">'+(m.name||'Anonimo')+':</span> '+escapeHtml(m.text)+'</div>';
   }).join('');
-  log.scrollTop = log.scrollHeight;
+  ['chatLog','chatLogAdv'].forEach(id=>{
+    const log = document.getElementById(id);
+    if(!log) return;
+    log.innerHTML = html;
+    log.scrollTop = log.scrollHeight;
+  });
 }
 function escapeHtml(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-document.getElementById('chatSendBtn').addEventListener('click', sendChat);
-document.getElementById('chatInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat(); });
-function sendChat(){
+function sendChat(inputId){
   if(!currentCode) return;
-  const input = document.getElementById('chatInput');
+  const input = document.getElementById(inputId);
   const text = input.value.trim();
   if(!text) return;
   const myName = (partyCache && partyCache.characters[playerId] && partyCache.characters[playerId].name) || 'Anonimo';
   socket.emit('chat_send', {code: currentCode, playerId, name: myName, text});
   input.value='';
 }
+document.getElementById('chatSendBtn').addEventListener('click', ()=> sendChat('chatInput'));
+document.getElementById('chatInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat('chatInput'); });
+document.getElementById('chatSendBtnAdv').addEventListener('click', ()=> sendChat('chatInputAdv'));
+document.getElementById('chatInputAdv').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat('chatInputAdv'); });
 
 /* ================= AVENTURA (reacciona al estado del servidor) ================= */
 const ROLL_REQUIRED_KINDS = ['attack','special','flee','check','check_alt','search_key','force_door'];
@@ -438,7 +444,7 @@ function applyViewMode(){
 
 document.getElementById('btnHabilidades').addEventListener('click', ()=> toggleQuickPanel('habilidades'));
 document.getElementById('btnInventario').addEventListener('click', ()=> toggleQuickPanel('inventario'));
-document.getElementById('btnRegistro').addEventListener('click', ()=> toggleQuickPanel('registro'));
+document.getElementById('btnHoja').addEventListener('click', ()=> toggleQuickPanel('hoja'));
 
 function toggleQuickPanel(mode){
   quickPanelMode = (quickPanelMode===mode) ? null : mode;
@@ -458,12 +464,16 @@ function renderQuickPanel(){
   } else if(quickPanelMode==='inventario'){
     panel.innerHTML = '<h4 style="margin:0 0 6px 0;">Inventario</h4>'+
       (c.inventory.length ? '<ul style="margin:0;padding-left:18px;">'+c.inventory.map(i=>'<li class="small-note">'+i+'</li>').join('')+'</ul>' : '<p class="small-note">(vacio)</p>');
-  } else if(quickPanelMode==='registro'){
-    const p = partyCache;
-    panel.innerHTML = '<h4 style="margin:0 0 6px 0;">Registro de la partida</h4>'+
-      '<div class="stat-row"><span>Nivel de '+c.name+'</span><span class="stat-val">'+c.level+'</span></div>'+
-      '<div class="stat-row"><span>Salas exploradas por la fiesta</span><span class="stat-val">'+(p.totalRooms||0)+'</span></div>'+
-      '<div class="stat-row"><span>Jugadores en la fiesta</span><span class="stat-val">'+Object.keys(p.characters||{}).length+'</span></div>';
+  } else if(quickPanelMode==='hoja'){
+    const statsHtml = ABILS.map(a=>'<div class="stat-row"><span>'+ABIL_LABEL[a]+'</span><span class="stat-val">'+c.stats[a]+' ('+fmtMod(mod(c.stats[a]))+')</span></div>').join('');
+    panel.innerHTML = '<h4 style="margin:0 0 4px 0;">'+c.name+' <span class="badge">Nivel '+c.level+'</span></h4>'+
+      '<p class="small-note" style="margin:0 0 8px 0;">'+RACES[c.race].name+' — '+cd.name+'</p>'+
+      '<div class="stat-row"><span>Vida</span><span class="stat-val">'+c.hp+' / '+c.maxHp+'</span></div>'+
+      '<div class="stat-row"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
+      '<div class="stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>'+
+      '<h4 style="margin:10px 0 4px 0;">Atributos</h4>'+statsHtml+
+      '<h4 style="margin:10px 0 4px 0;">Inventario</h4>'+
+      (c.inventory.length ? '<ul style="margin:0;padding-left:18px;">'+c.inventory.map(i=>'<li class="small-note">'+i+'</li>').join('')+'</ul>' : '<p class="small-note">(vacio)</p>');
   }
 }
 
@@ -479,6 +489,7 @@ function refreshAdventureTab(){
   renderCharCard();
   renderPartyCard();
   renderQuickPanel();
+  renderTurnStrip();
 }
 
 const ROOM_NAME = {
@@ -599,18 +610,32 @@ function renderCharCard(){
   const cd = CLASSES[c.cls];
   const hpPct = Math.max(0, Math.min(100, Math.round((c.hp/c.maxHp)*100)));
   const downed = c.hp<=0;
-  const specialPct = partyCache.usedSpecialThisScene ? 0 : 100;
+  const specialReady = !partyCache.usedSpecialThisScene;
   panel.innerHTML =
     '<div class="char-card-head">'+
-      '<div class="avatar-circle">'+(CLASS_ICON[c.cls]||'🧙')+'</div>'+
+      '<div class="avatar-ring" style="'+ringStyle(hpPct, specialReady?100:0, downed)+'"><div class="avatar-ring-inner">'+(CLASS_ICON[c.cls]||'🧙')+'</div></div>'+
       '<div><div class="cc-name">'+c.name+'</div><div class="cc-sub">'+cd.name+' — Nivel '+c.level+'</div></div>'+
     '</div>'+
-    '<div class="stat-bar-row"><div class="sbr-label"><span>Vida</span><span>'+(downed?'Caido':(c.hp+' / '+c.maxHp))+'</span></div>'+
-      '<div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:'+hpPct+'%;background:'+hpBarColor(hpPct,downed)+';"></div></div></div>'+
-    '<div class="stat-bar-row"><div class="sbr-label"><span>Especial</span><span>'+(specialPct?'Lista':'Usada')+'</span></div>'+
-      '<div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:'+specialPct+'%;background:var(--accent-2);"></div></div></div>'+
-    '<div class="stat-row"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
-    '<div class="stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>';
+    '<div class="ring-legend">'+
+      '<span><span class="dot" style="background:'+hpBarColor(hpPct,downed)+';"></span>Vida: '+(downed?'Caido':(c.hp+'/'+c.maxHp))+'</span>'+
+      '<span><span class="dot" style="background:var(--accent-2);"></span>Especial: '+(specialReady?'Lista':'Usada')+'</span>'+
+    '</div>'+
+    '<div class="stat-row-mini stat-row" style="margin-top:8px;"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
+    '<div class="stat-row-mini stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>';
+}
+
+function ringStyle(hpPct, specialPct, downed){
+  if(downed){
+    return 'background: conic-gradient(from 0deg, #5c4c3a 0deg 360deg);';
+  }
+  const blueEnd = 180 * (specialPct/100);
+  const greenEnd = 180 + 180 * (hpPct/100);
+  const hpColor = hpBarColor(hpPct, false);
+  return 'background: conic-gradient(from 0deg, '+
+    'var(--accent-2) 0deg '+blueEnd+'deg, '+
+    'var(--bg) '+blueEnd+'deg 180deg, '+
+    hpColor+' 180deg '+greenEnd+'deg, '+
+    'var(--bg) '+greenEnd+'deg 360deg);';
 }
 
 function renderPartyCard(){
@@ -620,15 +645,15 @@ function renderPartyCard(){
   const chars = (p && p.characters) || {};
   const ids = Object.keys(chars).filter(id=>id!==playerId);
   if(!ids.length){ panel.innerHTML = '<h4 style="margin:0;">Fiesta</h4><p class="small-note">Nadie mas se unio todavia.</p>'; return; }
-  panel.innerHTML = '<h4 style="margin:0 0 8px 0;">Fiesta</h4>' + ids.map(id=>{
+  panel.innerHTML = '<h4 style="margin:0 0 10px 0;">Fiesta</h4>' + ids.map(id=>{
     const c = chars[id];
     const pct = Math.max(0, Math.min(100, Math.round((c.hp/c.maxHp)*100)));
     const downed = c.hp<=0;
     return '<div class="party-member-row">'+
-      '<div class="avatar-circle pm-avatar">'+(CLASS_ICON[c.cls]||'🧙')+'</div>'+
+      '<div class="avatar-ring small" style="'+ringStyle(pct, 100, downed)+'"><div class="avatar-ring-inner">'+(CLASS_ICON[c.cls]||'🧙')+'</div></div>'+
       '<div class="pm-info">'+
-        '<div class="pm-name"><span>'+c.name+'</span><span class="small-note">Nv.'+c.level+'</span></div>'+
-        '<div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:'+pct+'%;background:'+hpBarColor(pct,downed)+';"></div></div>'+
+        '<div class="pm-name"><span>'+c.name+'</span><span class="clevel">Nv.'+c.level+'</span></div>'+
+        '<div class="small-note">'+(downed?'Caido':(c.hp+' / '+c.maxHp+' PV'))+'</div>'+
       '</div>'+
     '</div>';
   }).join('');
@@ -719,10 +744,28 @@ function renderSceneImage(sc){
   const box = document.getElementById('sceneImageBox');
   const p = partyCache;
   const myChar = p && p.characters[playerId];
+
+  if(sc.type==='combate' && sc.enemy){
+    const chars = (p && p.characters) || {};
+    const ids = Object.keys(chars);
+    const enemyImgHtml = sc.enemy.image
+      ? '<img src="'+sc.enemy.image+'" alt="'+sc.enemy.name+'">'
+      : '<div class="scene-image-placeholder" style="height:100%;display:flex;align-items:center;justify-content:center;"><span class="sip-icon">💀</span></div>';
+    const partyIconsHtml = '<div class="vs-party-label">Party</div>' + ids.map(id=>{
+      const c = chars[id];
+      return '<div class="avatar-ring small" style="'+ringStyle(Math.max(0,Math.min(100,Math.round((c.hp/c.maxHp)*100))), 100, c.hp<=0)+'; margin:0 auto;"><div class="avatar-ring-inner">'+(CLASS_ICON[c.cls]||'🧙')+'</div></div>'
+    }).join('');
+    box.innerHTML =
+      '<div class="vs-box">'+
+        '<div class="vs-enemy">'+enemyImgHtml+'<div class="vs-enemy-name">'+sc.enemy.name+'</div></div>'+
+        '<div class="vs-divider">VS</div>'+
+        '<div class="vs-party">'+partyIconsHtml+'</div>'+
+      '</div>';
+    return;
+  }
+
   let src = null;
-  if(sc.type==='combate' && sc.enemy && sc.enemy.image){
-    src = sc.enemy.image;
-  } else if(sc.type==='puerta'){
+  if(sc.type==='puerta'){
     src = DOOR_SCENE_IMAGE;
   } else if(myChar && typeof myChar.mapPos==='number' && myChar.mapPos>=0){
     const pt = MAP_POINTS[myChar.mapPos];
@@ -733,6 +776,22 @@ function renderSceneImage(sc){
   } else {
     box.innerHTML = '<div class="scene-image-placeholder"><span class="sip-icon">🖼️</span><span class="small-note">Imagen de la escena (proximamente)</span></div>';
   }
+}
+
+function renderTurnStrip(){
+  const el = document.getElementById('turnStrip');
+  if(!el) return;
+  const p = partyCache;
+  const chars = (p && p.characters) || {};
+  const turnOrder = (p.turnOrder && p.turnOrder.length) ? p.turnOrder : Object.keys(chars).sort();
+  if(!turnOrder.length){ el.innerHTML = '<p class="small-note">Nadie en la fiesta todavia.</p>'; return; }
+  const activeIdx = p.turnIndex % turnOrder.length;
+  el.innerHTML = turnOrder.map((id,i)=>{
+    const c = chars[id];
+    if(!c) return '';
+    const isActive = i===activeIdx;
+    return '<div class="turn-strip-item'+(isActive?' active':'')+'" title="'+c.name+'">'+(CLASS_ICON[c.cls]||'🧙')+'</div>';
+  }).join('');
 }
 
 function addChoice(label, fn, disabled){
@@ -762,6 +821,9 @@ function renderLog(){
   const log = document.getElementById('advLog');
   const entries = (partyCache && partyCache.log) || [];
   log.innerHTML = entries.map(l=>{
+    if(l.kind==='dm'){
+      return '<p class="dm-line"><span class="tag dm">🎭 DM</span> <em>'+l.text+'</em></p>';
+    }
     const tagClass = l.kind==='ok'?'ok':(l.kind==='bad'?'bad':'');
     const tagText = l.kind==='ok'?'OK':(l.kind==='bad'?'X':'-');
     return '<p><span class="tag '+tagClass+'">'+tagText+'</span> '+l.text+'</p>';

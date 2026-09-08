@@ -118,6 +118,64 @@ function pushLog(party, kind, text){
   if(party.log.length > 80) party.log.shift();
 }
 
+/* ===================== NARRADOR (Dungeon Master por reglas, sin IA real) ===================== */
+const DM_LINES = {
+  combate: [
+    'El Dungeon Master alza una ceja: algo se mueve en las sombras. Tirá iniciativa.',
+    'Sentís un escalofrío. El DM sonrie: "Preparate, esto se pone interesante." Tirá iniciativa.',
+    'El aire se vuelve tenso. El DM susurra: "Tirá iniciativa antes de que sea tarde."',
+    'El DM golpea la mesa con dos dedos: "Combate. Ya sabes que hacer: tirá iniciativa."'
+  ],
+  social: [
+    'El DM te mira por encima de la pantalla: "Alguien quiere hablar con vos. ¿Como lo encaras?"',
+    'Frente a vos hay alguien con quien podrias negociar. El DM espera tu decision.',
+    'El DM sonrie con picardia: "Las palabras tambien son un arma. Usalas bien."'
+  ],
+  exploracion: [
+    'El DM describe el entorno con cuidado: hay algo que requiere tu atencion.',
+    '"Presta atencion a los detalles", dice el DM. "Este lugar esconde algo."',
+    'El DM entrecierra los ojos mientras narra: el ambiente se siente cargado de historia.'
+  ],
+  trampa: [
+    'El DM entrecierra los ojos: "Cuidado donde pisas."',
+    'Algo no se siente bien en esta sala. El DM te lo advierte con la mirada.',
+    'El DM sonrie de costado: "Esto podria salir mal si no tenes cuidado."'
+  ],
+  hallazgo: [
+    'El DM señala un rincon: "Podria haber algo de valor ahi."',
+    'El DM se queda callado un segundo, dejando que la curiosidad haga su trabajo.'
+  ],
+  puerta: [
+    'El DM golpea la mesa: "Una puerta cerrada. ¿Como la resolves?"',
+    'El DM te mira fijo: "Llave, fuerza, u otro camino. Vos decidis."'
+  ],
+  decision: [
+    '¿Que haces? ¿Avanzas con cautela, te escondes, o atacas directo?',
+    'El DM espera: ¿tu personaje actua con cabeza fria o se lanza de lleno?',
+    'Tenes la palabra. ¿Como reacciona tu personaje ante esto?'
+  ],
+  victoria: [
+    'El DM asiente, satisfecho: "Bien hecho, aventurero."',
+    '"Impresionante", murmura el DM mientras anota algo en sus notas.',
+    'El DM sonrie: "Uno menos. La cripta sigue esperando."'
+  ],
+  nivel: [
+    'El DM sonrie: "Se nota que estas mejorando."',
+    'El DM cierra su libreta un momento: "Estas mas fuerte que cuando empezaste."'
+  ]
+};
+function dmLine(category){
+  const arr = DM_LINES[category];
+  if(!arr || !arr.length) return null;
+  return arr[Math.floor(Math.random()*arr.length)];
+}
+function pushDM(party, category){
+  const line = dmLine(category);
+  if(!line) return;
+  party.log.push({kind:'dm', text: line, ts: Date.now()});
+  if(party.log.length > 80) party.log.shift();
+}
+
 function broadcastParty(code){
   const party = parties[code];
   if(!party) return;
@@ -147,6 +205,7 @@ function gainXpAndItem(party, playerId, amount, item){
     c.maxHp += gained;
     c.hp = c.maxHp;
     leveled += ' '+c.name+' sube a nivel '+c.level+'!';
+    pushDM(party, 'nivel');
   }
   if(item) c.inventory.push(item);
   return leveled.trim();
@@ -222,6 +281,7 @@ function startTurnForPlayer(party, playerId){
   }
 
   pushLog(party, 'sys', myChar.name+' explora una nueva sala...');
+  pushDM(party, scene.type);
   party.status = scene.type==='combate' ? 'combat' : 'event';
   party.currentScene = scene;
   party.turnOrder = order;
@@ -343,6 +403,7 @@ function doAction(party, playerId, kind, clientRoll){
 
       if(enemy.hp<=0){
         pushLog(party,'ok', enemy.name+' ha sido derrotado por '+myChar.name+'!');
+        pushDM(party, 'victoria');
         const leveled = gainXpAndItem(party, playerId, enemy.xp, null);
         if(leveled) pushLog(party,'ok', leveled);
         advanceTurn(party);
