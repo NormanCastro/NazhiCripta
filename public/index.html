@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cripta de Nazhi — Multijugador en vivo</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>Cripta de Nazhi</h1>
+    <div class="subtitle">Aventura de rol multijugador — sincronizada en vivo</div>
+  </div>
+  <button class="theme-toggle" id="themeToggle">Tema</button>
+</header>
+
+<div class="wrap">
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="guia" class="active">Guia</button>
+    <button data-tab="personaje">Personaje</button>
+    <button data-tab="fiesta">Fiesta</button>
+    <button data-tab="aventura">Aventura</button>
+  </nav>
+
+  <div id="charBar" class="panel hidden">
+    <div class="topbar-char" id="charBarContent"></div>
+  </div>
+
+  <!-- ===================== GUÍA ===================== -->
+  <section id="tab-guia" class="tab-content">
+    <div class="panel">
+      <h2>Como se juega</h2>
+      <ol class="guide-list">
+        <li><strong>1. Crea tu personaje.</strong> Elegis raza y clase, tiras tus atributos con los dados, y el juego arma una breve historia de origen.</li>
+        <li><strong>2. Atributos.</strong> Fuerza (FUE), Destreza (DES), Constitucion (CON), Inteligencia (INT), Sabiduria (SAB) y Carisma (CAR). El modificador es (valor - 10) dividido 2, redondeado hacia abajo.</li>
+        <li><strong>3. Tiradas.</strong> Se lanza 1d20 mas el modificador correspondiente contra una Dificultad (CD).</li>
+        <li><strong>4. Iniciativa.</strong> Al entrar en combate, vos y el enemigo tiran d20 (vos con tu modificador de Destreza). Quien saca mas alto actua primero.</li>
+        <li><strong>5. Combate.</strong> d20 + modificador de ataque contra la Clase de Armadura (CA) del rival. Si acierta, se tira daño. 0 de vida = caes, pero te recuperas tras un descanso.</li>
+        <li><strong>6. Fiesta.</strong> Entra a un codigo de sala junto a tus amigos: todos ven el mismo tablero, la misma bitacora y el mismo chat, en vivo.</li>
+        <li><strong>7. Progresion.</strong> Ganar encuentros da experiencia; al subir de nivel ganas mas vida y te curas del todo.</li>
+      </ol>
+      <p class="small-note">Version simplificada e independiente inspirada en juegos de rol de mesa clasicos; no reproduce reglas ni textos de ningun manual con derechos de autor.</p>
+    </div>
+  </section>
+
+  <!-- ===================== PERSONAJE ===================== -->
+  <section id="tab-personaje" class="tab-content hidden">
+    <div class="panel" id="stepRace">
+      <h2>1. Elegi tu raza</h2>
+      <div class="grid" id="raceGrid"></div>
+    </div>
+    <div class="panel" id="stepClass">
+      <h2>2. Elegi tu clase</h2>
+      <div class="grid" id="classGrid"></div>
+    </div>
+    <div class="panel" id="stepStats">
+      <h2>3. Atributos</h2>
+      <p class="small-note">4d6, descarta el menor, seis veces.</p>
+      <button class="action gold" id="rollStatsBtn">Tirar atributos</button>
+      <div id="statsResult" style="margin-top:10px;"></div>
+    </div>
+    <div class="panel" id="stepName">
+      <h2>4. Nombre y trasfondo</h2>
+      <label>Nombre del personaje</label>
+      <input type="text" id="charName" placeholder="Ej: Nazhi Sombraveloz" maxlength="40">
+      <button class="action secondary" id="genStoryBtn" style="margin-top:10px;">Generar historia de origen</button>
+      <div id="storyResult" style="margin-top:10px;"></div>
+    </div>
+    <div class="panel center">
+      <button class="action" id="createCharBtn" disabled>Crear personaje</button>
+      <div id="createMsg" class="small-note"></div>
+    </div>
+    <div class="panel hidden" id="sheetPanel">
+      <h2>Hoja de personaje</h2>
+      <div id="sheetContent"></div>
+      <button class="action secondary" id="resetCharBtn" style="margin-top:10px;">Empezar personaje nuevo</button>
+    </div>
+  </section>
+
+  <!-- ===================== FIESTA ===================== -->
+  <section id="tab-fiesta" class="tab-content hidden">
+    <div class="panel" id="noPartyPanel">
+      <h2>Unite a una fiesta en vivo</h2>
+      <p class="small-note">Todos los que entren con el mismo codigo se ven en tiempo real: mismo tablero, misma bitacora, mismo chat.</p>
+      <label>Codigo de fiesta</label>
+      <input type="text" id="partyCodeInput" placeholder="Ej: DRAGONROJO" maxlength="24">
+      <button class="action" id="joinPartyBtn" style="margin-top:10px;">Entrar / Crear</button>
+      <div id="joinPartyMsg" class="small-note" style="margin-top:6px;"></div>
+      <div id="connMsg" class="small-note"></div>
+    </div>
+
+    <div class="panel hidden" id="inPartyPanel">
+      <h2>Fiesta: <span id="partyCodeLabel"></span></h2>
+      <p class="small-note">Compartí este codigo para que se unan mas jugadores. Se sincroniza solo, no hace falta pasar nada mas.</p>
+      <button class="action secondary" id="leavePartyBtn">Salir de esta fiesta</button>
+
+      <h3 style="margin-top:16px;">Miembros</h3>
+      <div id="partyRoster" class="grid"></div>
+
+      <div id="publishCharBlock" style="margin-top:16px;">
+        <div id="noSoloCharMsg" class="small-note hidden">Primero creá un personaje en la pestaña Personaje.</div>
+        <button class="action gold hidden" id="publishCharBtn">Publicar mi personaje en esta fiesta</button>
+        <div id="hasPartyCharMsg" class="small-note hidden">Ya tenés un personaje publicado en esta fiesta.</div>
+      </div>
+
+      <div style="margin-top:20px;">
+        <h3>Chat de la fiesta</h3>
+        <div class="log" id="chatLog" style="max-height:220px;"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <input type="text" id="chatInput" placeholder="Escribi un mensaje..." maxlength="500" style="flex:1;">
+          <button class="action gold" id="chatSendBtn">Enviar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== AVENTURA ===================== -->
+  <section id="tab-aventura" class="tab-content hidden">
+    <div class="panel" id="noCharWarning">
+      <p>Primero creá un personaje en la pestaña Personaje, y publicalo en la pestaña Fiesta.</p>
+    </div>
+
+    <div class="panel hidden" id="adventureIntro">
+      <h2>La Cripta te espera</h2>
+      <p id="partyTurnInfo">Explora salas al azar: combates, encuentros sociales, trampas y hallazgos.</p>
+      <button class="action" id="startAdvBtn">Empezar mi turno</button>
+    </div>
+
+    <div class="two-col hidden" id="adventureBoard">
+      <div class="panel" id="scenePanel">
+        <h3 id="sceneTitle">-</h3>
+        <p id="sceneText"></p>
+        <p class="small-note" id="actorNote"></p>
+        <div id="enemyBlock" class="hidden">
+          <div class="stat-row">
+            <span id="enemyName"></span>
+            <span id="enemyHpText"></span>
+          </div>
+          <div class="hp-bar-wrap"><div class="enemy-hp-bar" id="enemyHpBar" style="width:100%"></div></div>
+        </div>
+        <div id="choices" style="margin-top:14px;"></div>
+      </div>
+      <div class="panel">
+        <h3>Bitacora</h3>
+        <div class="log" id="advLog"></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<button class="dice-fab" id="diceFab" title="Tirador de dados">D20</button>
+<div class="dice-panel hidden" id="dicePanel">
+  <h3 style="margin-top:0;">Tirador de dados</h3>
+  <div class="dice-grid" id="diceTypeGrid"></div>
+  <label>Cantidad</label>
+  <input type="number" id="diceQty" value="1" min="1" max="20">
+  <label style="margin-top:8px;">Modificador</label>
+  <input type="number" id="diceMod" value="0">
+  <button class="action" id="diceRollBtn" style="width:100%;margin-top:10px;">Tirar</button>
+  <div id="diceResult" style="margin-top:10px;font-size:0.95rem;"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

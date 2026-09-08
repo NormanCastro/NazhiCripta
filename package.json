@@ -1,0 +1,16 @@
+{
+  "name": "cripta-de-nazhi",
+  "version": "1.0.0",
+  "description": "Juego de rol multijugador tipo D&D, con chat en vivo, sincronizado en tiempo real",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
