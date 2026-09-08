@@ -94,11 +94,7 @@ function blankParty(code){
     characters: {},
     status: 'idle',
     currentScene: null,
-    turnOrder: [],
-    turnIndex: 0,
-    usedSpecialThisScene: false,
-    sceneFirstHit: true,
-    enemyActsFirst: false,
+    turnQueue: [],
     log: [],
     chat: [],
     roomHistory: [],
@@ -183,13 +179,16 @@ function broadcastParty(code){
   io.to(code).emit('state', party);
 }
 
-function currentTurnOrder(party){
-  return party.turnOrder && party.turnOrder.length ? party.turnOrder : Object.keys(party.characters).sort();
+function ensureInQueue(party, playerId){
+  party.turnQueue = party.turnQueue || [];
+  if(!party.turnQueue.includes(playerId)) party.turnQueue.push(playerId);
+}
+function removeFromQueue(party, playerId){
+  party.turnQueue = (party.turnQueue||[]).filter(id=>id!==playerId);
 }
 function activePlayerId(party){
-  const order = currentTurnOrder(party);
-  if(!order.length) return null;
-  return order[party.turnIndex % order.length];
+  const q = party.turnQueue || [];
+  return q.length ? q[0] : null;
 }
 
 function gainXpAndItem(party, playerId, amount, item){
@@ -219,31 +218,57 @@ function damagePlayer(party, playerId, dmg){
 }
 
 function advanceTurn(party){
-  party.turnOrder = currentTurnOrder(party);
+  // el que acaba de jugar pasa al final de la cola; el siguiente frente de la cola juega despues
+  const q = party.turnQueue || [];
+  if(q.length){ const finished = q.shift(); q.push(finished); }
+  party.turnQueue = q;
   party.status = 'idle';
   party.currentScene = null;
-  party.turnIndex = (party.turnIndex||0) + 1;
 }
 
-function enemyTurn(party, playerId, furyActive){
-  const sc = party.currentScene;
-  if(!sc || !sc.enemy) return;
-  const enemy = sc.enemy;
-  const c = party.characters[playerId];
-  const roll = rollDie(20);
-  const total = roll + enemy.atk;
-  const hit = total >= c.ac;
-  pushLog(party, hit?'bad':'sys', enemy.name+' ataca a '+c.name+': d20('+roll+')+'+enemy.atk+' = '+total+' vs CA '+c.ac+' -> '+(hit?'golpea':'falla'));
-  if(hit){
-    let dmg = enemy.dmg.length===3 ? rollDie(enemy.dmg[1])+enemy.dmg[2] : rollDie(enemy.dmg[1]);
-    if(furyActive){ dmg = Math.ceil(dmg/2); pushLog(party,'sys','La Furia reduce el golpe a la mitad.'); }
-    const newHp = damagePlayer(party, playerId, dmg);
-    pushLog(party, 'bad', c.name+' recibe '+dmg+' de daño.');
-    if(newHp<=0){
-      pushLog(party, 'bad', c.name+' cae, pero tras un breve respiro recupera fuerzas.');
-      c.hp = c.maxHp;
-      advanceTurn(party);
+function resolveEnemyIfCurrent(party, sc){
+  // Resuelve automaticamente los turnos del enemigo (y saltea jugadores que ya huyeron)
+  // hasta que le toque a un jugador activo, o termine el combate.
+  let guard = 0;
+  while(guard < 12){
+    const entry = sc.combatOrder[sc.combatIdx];
+    if(!entry) return;
+    if(entry.type==='player'){
+      if(sc.fledIds.includes(entry.id)){
+        sc.combatIdx = (sc.combatIdx+1) % sc.combatOrder.length;
+        guard++; continue;
+      }
+      return; // le toca a un jugador presente -> se detiene aca, esperando su accion
     }
+    // turno del enemigo
+    const targets = sc.combatOrder.filter(e=>e.type==='player' && !sc.fledIds.includes(e.id));
+    if(!targets.length){
+      pushLog(party,'sys','El grupo se retira y pierde de vista al enemigo.');
+      advanceTurn(party);
+      return;
+    }
+    const target = targets[Math.floor(Math.random()*targets.length)];
+    const tChar = party.characters[target.id];
+    const roll = rollDie(20);
+    const total = roll + sc.enemy.atk;
+    const hit = total >= tChar.ac;
+    pushLog(party, hit?'bad':'sys', sc.enemy.name+' ataca a '+tChar.name+': d20('+roll+')+'+sc.enemy.atk+' = '+total+' vs CA '+tChar.ac+' -> '+(hit?'golpea':'falla'));
+    if(hit){
+      let dmg = sc.enemy.dmg.length===3 ? rollDie(sc.enemy.dmg[1])+sc.enemy.dmg[2] : rollDie(sc.enemy.dmg[1]);
+      if(sc.halfDamageFor === target.id){
+        dmg = Math.ceil(dmg/2);
+        pushLog(party,'sys', tChar.name+' amortigua el golpe a la mitad.');
+        sc.halfDamageFor = null;
+      }
+      const newHp = damagePlayer(party, target.id, dmg);
+      pushLog(party,'bad', tChar.name+' recibe '+dmg+' de daño.');
+      if(newHp<=0){
+        pushLog(party,'bad', tChar.name+' cae, pero tras un breve respiro recupera fuerzas.');
+        tChar.hp = tChar.maxHp;
+      }
+    }
+    sc.combatIdx = (sc.combatIdx+1) % sc.combatOrder.length;
+    guard++;
   }
 }
 
@@ -251,23 +276,47 @@ function startTurnForPlayer(party, playerId){
   if(party.status !== 'idle' || party.currentScene){
     return { error: 'Ya hay una escena en curso en esta fiesta.' };
   }
-  const order = currentTurnOrder(party);
-  const active = order.length ? order[party.turnIndex % order.length] : playerId;
-  if(order.length && active !== playerId) return { error: 'No es tu turno.' };
+  if(party.turnQueue && party.turnQueue.length && party.turnQueue[0] !== playerId){
+    return { error: 'No es tu turno.' };
+  }
   const myChar = party.characters[playerId];
   if(!myChar) return { error: 'No tenes personaje publicado en esta fiesta.' };
 
-  const nextMapPos = (typeof myChar.mapPos==='number' && myChar.mapPos>=0) ? (myChar.mapPos+1) % MAP_POINTS_LEN : 0;
+  // la posicion "actual" de la fiesta es la de cualquier personaje ya ubicado (todos deberian coincidir)
+  const placedPositions = Object.values(party.characters).map(c=>c.mapPos).filter(v=>typeof v==='number' && v>=0);
+  const currentSharedPos = placedPositions.length ? placedPositions[0] : -1;
+  const nextMapPos = (currentSharedPos>=0) ? (currentSharedPos+1) % MAP_POINTS_LEN : 0;
   const guardBias = GUARD_ROOM_INDEXES.includes(nextMapPos) && Math.random() < 0.6;
   const type = guardBias ? 'combate' : SCENE_TYPES[Math.floor(Math.random()*SCENE_TYPES.length)];
+  const presentIds = Object.keys(party.characters); // la fiesta se mueve junta: todos estan presentes
   let scene;
   if(type==='combate'){
+    const avgLevel = presentIds.reduce((s,id)=>s+party.characters[id].level,0) / presentIds.length;
     const base = guardBias ? GUARD_ENEMY : ENEMIES[Math.floor(Math.random()*ENEMIES.length)];
-    const enemy = Object.assign({}, base, {maxHp: base.hp + (myChar.level-1)*4});
+    const extraHp = Math.max(0, presentIds.length-1) * 8; // mas dura si son varios
+    const enemy = Object.assign({}, base, {maxHp: base.hp + Math.round((avgLevel-1)*4) + extraHp});
     enemy.hp = enemy.maxHp;
-    const title = guardBias ? 'Un guardia te corta el paso!' : 'Emboscada! '+enemy.name;
-    const text = guardBias ? 'Un guardia de la cripta, armado con espada y escudo, se planta frente a vos.' : 'Un '+enemy.name.toLowerCase()+' corta el paso.';
-    scene = {type:'combate', title, text, enemy};
+    const grupal = presentIds.length>1;
+    const title = guardBias ? (grupal?'Un guardia les corta el paso!':'Un guardia te corta el paso!') : 'Emboscada! '+enemy.name;
+    const text = guardBias
+      ? ('Un guardia de la cripta, armado con espada y escudo, se planta frente a '+(grupal?'ustedes.':'vos.'))
+      : ('Un '+enemy.name.toLowerCase()+' corta el paso'+(grupal?' al grupo.':'.'));
+    scene = {type:'combate', title, text, enemy, usedSpecialBy:[], attackedIds:[], fledIds:[], halfDamageFor:null, firstStrikeUsed:false};
+
+    // iniciativa individual: cada presente tira su propio d20 + mod Destreza
+    const combatOrder = presentIds.map(id=>{
+      const c = party.characters[id];
+      const roll = rollDie(20);
+      const initVal = roll + mod(c.stats.DES);
+      return {type:'player', id, name:c.name, roll, init:initVal};
+    });
+    const enemyRoll = rollDie(20);
+    combatOrder.push({type:'enemy', id:'enemy', name:enemy.name, roll:enemyRoll, init: enemyRoll+(enemy.init||0)});
+    combatOrder.sort((a,b)=> b.init - a.init);
+    scene.combatOrder = combatOrder;
+    scene.combatIdx = 0;
+    pushLog(party,'sys','Iniciativa: '+combatOrder.map(e=> e.name+' d20('+e.roll+')'+fmtMod(e.init-e.roll)+'='+e.init).join(' | '));
+    pushLog(party,'sys','Orden de turnos: '+combatOrder.map(e=>e.name).join(' -> '));
   } else if(type==='social'){
     scene = Object.assign({type:'social'}, SOCIAL_SCENES[Math.floor(Math.random()*SOCIAL_SCENES.length)]);
   } else if(type==='exploracion'){
@@ -284,33 +333,23 @@ function startTurnForPlayer(party, playerId){
   pushDM(party, scene.type);
   party.status = scene.type==='combate' ? 'combat' : 'event';
   party.currentScene = scene;
-  party.turnOrder = order;
-  party.usedSpecialThisScene = false;
-  party.sceneFirstHit = true;
-  party.enemyActsFirst = false;
   party.totalRooms = (party.totalRooms||0) + 1;
   party.roomHistory = (party.roomHistory||[]);
   party.roomHistory.push({type: scene.type, n: party.totalRooms});
   if(party.roomHistory.length > 10) party.roomHistory.shift();
 
-  // avanza el token de ESTE jugador en el mapa (cada personaje tiene su propia posicion)
-  myChar.mapPos = nextMapPos;
-  myChar.lastRoomType = scene.type;
+  // la fiesta se mueve junta: todos los personajes avanzan a la misma sala
+  Object.values(party.characters).forEach(ch=>{
+    ch.mapPos = nextMapPos;
+    ch.lastRoomType = scene.type;
+  });
 
   // niebla: se despeja para toda la fiesta por donde alguien ya paso
   party.fogRevealed = party.fogRevealed || [];
   if(!party.fogRevealed.includes(myChar.mapPos)) party.fogRevealed.push(myChar.mapPos);
 
   if(scene.type==='combate'){
-    const playerRoll = rollDie(20);
-    const playerInit = playerRoll + mod(myChar.stats.DES);
-    const enemyRoll = rollDie(20);
-    const enemyInit = enemyRoll + (scene.enemy.init||0);
-    party.enemyActsFirst = enemyInit > playerInit;
-    pushLog(party, 'sys', 'Iniciativa: '+myChar.name+' d20('+playerRoll+')'+fmtMod(mod(myChar.stats.DES))+' = '+playerInit+' vs '+scene.enemy.name+' d20('+enemyRoll+')'+fmtMod(scene.enemy.init||0)+' = '+enemyInit+' -> actua primero: '+(party.enemyActsFirst?scene.enemy.name:myChar.name));
-    if(party.enemyActsFirst){
-      enemyTurn(party, playerId, false);
-    }
+    resolveEnemyIfCurrent(party, scene); // por si el enemigo saco mas iniciativa que todos
   }
   return { ok:true };
 }
@@ -318,22 +357,34 @@ function startTurnForPlayer(party, playerId){
 function doAction(party, playerId, kind, clientRoll){
   const myChar = party.characters[playerId];
   if(!myChar) return { error:'No tenes personaje publicado.' };
-  const order = currentTurnOrder(party);
-  const active = order.length ? order[party.turnIndex % order.length] : playerId;
-  if(order.length && active !== playerId) return { error:'No es tu turno.' };
   const sc = party.currentScene;
   if(!sc) return { error:'No hay escena activa.' };
 
+  // fuera de combate, solo puede actuar quien esta al frente de la cola de turnos
+  if(sc.type!=='combate'){
+    if(party.turnQueue && party.turnQueue.length && party.turnQueue[0] !== playerId){
+      return { error:'No es tu turno.' };
+    }
+  }
+
   if(sc.type==='combate'){
+    const combatOrder = sc.combatOrder || [];
+    const currentEntry = combatOrder[sc.combatIdx];
+    if(!currentEntry || currentEntry.type!=='player' || currentEntry.id!==playerId){
+      return { error:'No es tu turno de combate (mira la bitacora para ver el orden de iniciativa).' };
+    }
+
     if(kind==='attack' || kind==='special'){
       const useSpecial = kind==='special';
       const cd = CLASSES[myChar.cls];
       const atkStat = mod(myChar.stats[cd.primary]);
       const enemy = sc.enemy;
       let hit = true, dmg = 0;
+      let healOnly = false;
 
       if(useSpecial){
-        if(party.usedSpecialThisScene) return { error:'Ya usaste tu habilidad especial en esta escena.' };
+        if(sc.usedSpecialBy.includes(playerId)) return { error:'Ya usaste tu habilidad especial en este combate.' };
+        sc.usedSpecialBy.push(playerId);
         if(myChar.cls==='mago'){
           dmg = rollDie(6)+rollDie(6);
           pushLog(party,'ok', myChar.name+' lanza Dardo Arcano: '+dmg+' de daño magico.');
@@ -344,19 +395,16 @@ function doAction(party, playerId, kind, clientRoll){
           const heal = rollDie(6)+rollDie(6)+mod(myChar.stats.SAB);
           myChar.hp = Math.min(myChar.maxHp, myChar.hp+heal);
           pushLog(party,'ok', myChar.name+' usa Palabra Sagrada y recupera '+heal+' de vida.');
-          party.usedSpecialThisScene = true;
-          return { ok:true };
+          healOnly = true;
         } else if(myChar.cls==='bardo'){
           const heal = rollDie(6)+mod(myChar.stats.CAR);
           myChar.hp = Math.min(myChar.maxHp, myChar.hp+Math.max(1,heal));
           pushLog(party,'ok', myChar.name+' entona su Cancion Inspiradora y recupera '+Math.max(1,heal)+' de vida.');
-          party.usedSpecialThisScene = true;
-          return { ok:true };
+          healOnly = true;
         } else if(myChar.cls==='barbaro'){
-          pushLog(party,'ok', myChar.name+' entra en Furia: el proximo golpe le hara la mitad de daño.');
-          party.usedSpecialThisScene = true;
-          enemyTurn(party, playerId, true);
-          return { ok:true };
+          pushLog(party,'ok', myChar.name+' entra en Furia: el proximo golpe que reciba sera la mitad de daño.');
+          sc.halfDamageFor = playerId;
+          healOnly = true;
         } else {
           const roll = resolveRoll(clientRoll);
           const rk = rollKind(roll);
@@ -366,7 +414,7 @@ function doAction(party, playerId, kind, clientRoll){
           else hit = (roll+atkStat) >= enemy.ac;
           if(myChar.cls==='monje'){ dmg = rollDie(6)+rollDie(6)+atkStat; }
           else { dmg = rollDie(8) + atkStat + (myChar.cls==='guerrero'?4:0) + (myChar.cls==='paladin'?4:0) + (rk==='crit'?rollDie(8):0); }
-          if(myChar.cls==='picaro' && party.sceneFirstHit) dmg *= 2;
+          if(myChar.cls==='picaro' && !sc.firstStrikeUsed) dmg *= 2;
           const flair = rk==='crit' ? ' ¡GOLPE CRITICO!' : (rk==='fumble' && !autoHit ? ' ¡PIFIA NATURAL!' : '');
           pushLog(party, hit?'ok':'bad', myChar.name+' usa su habilidad especial:'+flair+' '+(hit?'impacto por '+dmg+' de daño.':'aun asi falla.'));
           if(myChar.cls==='paladin' && hit){
@@ -375,7 +423,6 @@ function doAction(party, playerId, kind, clientRoll){
             pushLog(party,'ok', myChar.name+' canaliza poder sagrado y recupera '+heal+' de vida.');
           }
         }
-        party.usedSpecialThisScene = true;
       } else {
         const roll = resolveRoll(clientRoll);
         const rk = rollKind(roll);
@@ -393,29 +440,35 @@ function doAction(party, playerId, kind, clientRoll){
         if(hit){
           dmg = rollDie(8) + atkStat + (rk==='crit' ? rollDie(8) : 0);
           if(rk==='crit') pushLog(party,'ok','El critico duplica el dado de daño!');
-          if(myChar.cls==='picaro' && party.sceneFirstHit){ dmg*=2; pushLog(party,'ok','Golpe Furtivo: daño duplicado!'); }
+          if(myChar.cls==='picaro' && !sc.firstStrikeUsed){ dmg*=2; pushLog(party,'ok','Golpe Furtivo: daño duplicado!'); }
           pushLog(party,'ok', myChar.name+' inflige '+dmg+' de daño.');
         }
       }
 
-      if(hit) enemy.hp -= dmg;
-      party.sceneFirstHit = false;
+      if(!healOnly){
+        if(!sc.attackedIds.includes(playerId)) sc.attackedIds.push(playerId);
+        sc.firstStrikeUsed = true;
+        if(hit) enemy.hp -= dmg;
 
-      if(enemy.hp<=0){
-        pushLog(party,'ok', enemy.name+' ha sido derrotado por '+myChar.name+'!');
-        pushDM(party, 'victoria');
-        const leveled = gainXpAndItem(party, playerId, enemy.xp, null);
-        if(leveled) pushLog(party,'ok', leveled);
-        advanceTurn(party);
-        return { ok:true };
+        if(enemy.hp<=0){
+          pushLog(party,'ok', enemy.name+' ha sido derrotado por '+myChar.name+'!');
+          pushDM(party, 'victoria');
+          const leveled = gainXpAndItem(party, playerId, enemy.xp, null);
+          if(leveled) pushLog(party,'ok', leveled);
+          advanceTurn(party);
+          return { ok:true };
+        }
       }
-      enemyTurn(party, playerId, false);
+
+      sc.combatIdx = (sc.combatIdx+1) % combatOrder.length;
+      resolveEnemyIfCurrent(party, sc);
       return { ok:true };
 
     } else if(kind==='defend'){
       pushLog(party,'sys', myChar.name+' se cubre y se prepara para amortiguar el golpe.');
-      party.sceneFirstHit = false;
-      enemyTurn(party, playerId, true);
+      sc.halfDamageFor = playerId;
+      sc.combatIdx = (sc.combatIdx+1) % combatOrder.length;
+      resolveEnemyIfCurrent(party, sc);
       return { ok:true };
 
     } else if(kind==='usepotion'){
@@ -426,8 +479,8 @@ function doAction(party, playerId, kind, clientRoll){
       const heal = rollDie(8)+2;
       myChar.hp = Math.min(myChar.maxHp, myChar.hp+heal);
       pushLog(party,'ok', myChar.name+' bebe una pocion y recupera '+heal+' de vida.');
-      party.sceneFirstHit = false;
-      enemyTurn(party, playerId, false);
+      sc.combatIdx = (sc.combatIdx+1) % combatOrder.length;
+      resolveEnemyIfCurrent(party, sc);
       return { ok:true };
 
     } else if(kind==='flee'){
@@ -440,8 +493,9 @@ function doAction(party, playerId, kind, clientRoll){
       else success = (roll+modv) >= 12;
       const flair = rk==='crit' ? ' ¡GOLPE DE SUERTE!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
       pushLog(party, success?'ok':'bad', myChar.name+' intenta huir:'+flair+' d20('+roll+')'+fmtMod(modv)+' -> '+(success?'Escapa!':'No logra escapar.'));
-      if(success){ advanceTurn(party); }
-      else { enemyTurn(party, playerId, false); }
+      if(success) sc.fledIds.push(playerId);
+      sc.combatIdx = (sc.combatIdx+1) % combatOrder.length;
+      resolveEnemyIfCurrent(party, sc);
       return { ok:true };
     }
     return { error:'Accion invalida para combate.' };
@@ -573,6 +627,7 @@ io.on('connection', (socket)=>{
     character.mapPos = existing ? existing.mapPos : -1;
     character.lastRoomType = existing ? existing.lastRoomType : null;
     party.characters[playerId] = character;
+    ensureInQueue(party, playerId);
     pushLog(party, 'sys', (character.name||'Un jugador')+' se unio a la fiesta.');
     broadcastParty(code);
   });

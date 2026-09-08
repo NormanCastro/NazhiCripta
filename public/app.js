@@ -264,8 +264,9 @@ function computeAdvantage(kind){
   // Desventaja: atacar o actuar mal herido (menos de 25% de vida) - manos temblorosas
   if(myChar.hp <= myChar.maxHp * 0.25) hasDisadv = true;
 
-  // Ventaja: el Picaro golpeando por sorpresa (su primer golpe en el combate)
-  if(kind==='attack' && myChar.cls==='picaro' && p.sceneFirstHit) hasAdv = true;
+  // Ventaja: el Picaro golpeando por sorpresa (mientras nadie ataco todavia en este combate)
+  const sc = p.currentScene;
+  if(kind==='attack' && myChar.cls==='picaro' && sc && sc.type==='combate' && !sc.firstStrikeUsed) hasAdv = true;
 
   if(hasAdv && hasDisadv) return 'normal';
   if(hasAdv) return 'adv';
@@ -428,12 +429,9 @@ function renderChat(){
     const mine = m.playerId===playerId ? ' me' : '';
     return '<div class="chat-msg'+mine+'"><span class="who">'+(m.name||'Anonimo')+':</span> '+escapeHtml(m.text)+'</div>';
   }).join('');
-  ['chatLog','chatLogAdv'].forEach(id=>{
-    const log = document.getElementById(id);
-    if(!log) return;
-    log.innerHTML = html;
-    log.scrollTop = log.scrollHeight;
-  });
+  const log = document.getElementById('chatLog');
+  if(log){ log.innerHTML = html; log.scrollTop = log.scrollHeight; }
+  renderUnifiedFeed();
 }
 function escapeHtml(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -446,11 +444,68 @@ function sendChat(inputId){
   const myName = (partyCache && partyCache.characters[playerId] && partyCache.characters[playerId].name) || 'Anonimo';
   socket.emit('chat_send', {code: currentCode, playerId, name: myName, text});
   input.value='';
+  if(inputId==='chatInputAdv') tryMatchIntent(text);
 }
 document.getElementById('chatSendBtn').addEventListener('click', ()=> sendChat('chatInput'));
 document.getElementById('chatInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat('chatInput'); });
 document.getElementById('chatSendBtnAdv').addEventListener('click', ()=> sendChat('chatInputAdv'));
 document.getElementById('chatInputAdv').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat('chatInputAdv'); });
+
+/* ================= "HABLAR CON EL DM" — reconocimiento de palabras clave (sin IA) ================= */
+const INTENT_KEYWORDS = {
+  attack: ['atacar','ataco','atacá','pego','pegar','golpear','golpeo','pelear','peleo'],
+  special: ['especial','habilidad'],
+  defend: ['defender','defenderme','defiendo','cubrirme','cubro','esconderme','escondo','protegerme','proteger'],
+  usepotion: ['pocion','poción','curarme','curar','beber','tomar pocion'],
+  flee: ['huir','huyo','escapar','escapo','correr','corro','irme','retirarme','retirada'],
+  collect: ['recoger','recojo','agarrar','agarro','tomar','revisar','busco algo'],
+  search_key: ['buscar llave','busco la llave','llave'],
+  force_door: ['forzar','romper','empujar','forzarla'],
+  check: ['intentar','probar','investigar','intento','pruebo','investigo'],
+  check_alt: ['otro enfoque','alternativa','de otra forma','diferente'],
+  skip: ['seguir de largo','ignorar','avanzar','pasar de largo','evitar','no arriesgarme','sigo']
+};
+function normalizeText(s){
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function getActivePlayerId(p){
+  if(!p) return null;
+  const sc = p.currentScene;
+  if(sc && sc.type==='combate' && sc.combatOrder && sc.combatOrder.length){
+    const entry = sc.combatOrder[sc.combatIdx];
+    return entry && entry.type==='player' ? entry.id : null;
+  }
+  const q = (p.turnQueue && p.turnQueue.length) ? p.turnQueue : Object.keys(p.characters||{}).sort();
+  return q.length ? q[0] : null;
+}
+function tryMatchIntent(text){
+  clearIntentHint();
+  const p = partyCache;
+  if(!p || !p.currentScene) return;
+  const activePlayer = getActivePlayerId(p);
+  if(activePlayer !== playerId) return; // solo tiene sentido si es tu turno
+  const norm = normalizeText(text);
+  const availableButtons = Array.from(document.querySelectorAll('#choices .choice-btn:not(:disabled)'));
+  if(!availableButtons.length) return;
+
+  for(const btn of availableButtons){
+    const kind = btn.dataset.kind;
+    const keywords = INTENT_KEYWORDS[kind];
+    if(!keywords) continue;
+    if(keywords.some(kw => norm.includes(normalizeText(kw)))){
+      btn.classList.add('choice-hint');
+      const hint = document.getElementById('intentHint');
+      hint.textContent = '💡 Creo que te referís a: "'+btn.textContent+'". Tocá el botón resaltado para confirmarlo.';
+      hint.classList.remove('hidden');
+      return;
+    }
+  }
+}
+function clearIntentHint(){
+  document.querySelectorAll('#choices .choice-btn.choice-hint').forEach(b=>b.classList.remove('choice-hint'));
+  const hint = document.getElementById('intentHint');
+  if(hint){ hint.classList.add('hidden'); hint.textContent=''; }
+}
 
 /* ================= AVENTURA (reacciona al estado del servidor) ================= */
 const ROLL_REQUIRED_KINDS = ['attack','special','flee','check','check_alt','search_key','force_door'];
@@ -588,8 +643,7 @@ function renderRoomMap(){
   }
   ensureMapDom();
 
-  const turnOrder = (p.turnOrder && p.turnOrder.length) ? p.turnOrder : Object.keys(chars).sort();
-  const activePlayerId = (p.currentScene && turnOrder.length) ? turnOrder[p.turnIndex % turnOrder.length] : null;
+  const activePlayerId = p.currentScene ? getActivePlayerId(p) : null;
 
   // niebla: se despeja donde la fiesta ya paso (mas la posicion actual de cada uno)
   const revealed = new Set(p.fogRevealed||[]);
@@ -614,7 +668,13 @@ function renderRoomMap(){
       el.className = 'map-token-el';
       container.appendChild(el);
     }
-    el.style.left = pt.x+'%';
+    // si varios personajes comparten sala, los separamos un poco para que no se tapen entre si
+    const sameRoomIds = ids.filter(oid=>chars[oid].mapPos===c.mapPos).sort();
+    const idxInGroup = sameRoomIds.indexOf(id);
+    const groupSize = sameRoomIds.length;
+    const spread = 3.2; // % de desplazamiento entre tokens que comparten sala
+    const offsetX = groupSize>1 ? (idxInGroup - (groupSize-1)/2) * spread : 0;
+    el.style.left = (pt.x+offsetX)+'%';
     el.style.top = pt.y+'%';
     el.style.borderColor = isActive ? 'var(--accent-3)' : colorForPlayer(id);
     el.style.background = isActive
@@ -644,7 +704,8 @@ function renderCharCard(){
   const cd = CLASSES[c.cls];
   const hpPct = Math.max(0, Math.min(100, Math.round((c.hp/c.maxHp)*100)));
   const downed = c.hp<=0;
-  const specialReady = !partyCache.usedSpecialThisScene;
+  const sceneForSpecial = partyCache.currentScene;
+  const specialReady = !(sceneForSpecial && sceneForSpecial.type==='combate' && sceneForSpecial.usedSpecialBy && sceneForSpecial.usedSpecialBy.includes(playerId));
   panel.innerHTML =
     '<div class="char-card-head">'+
       '<div class="avatar-ring" style="'+ringStyle(hpPct, specialReady?100:0, downed)+'"><div class="avatar-ring-inner">'+(CLASS_ICON[c.cls]||'🧙')+'</div></div>'+
@@ -696,12 +757,11 @@ function renderPartyCard(){
 function renderAdventure(){
   const p = partyCache;
 
-  const turnOrder = (p.turnOrder && p.turnOrder.length) ? p.turnOrder : Object.keys(p.characters).sort();
-  const activePlayer = turnOrder.length ? turnOrder[p.turnIndex % turnOrder.length] : null;
+  const activePlayer = getActivePlayerId(p);
   const activeName = activePlayer && p.characters[activePlayer] ? p.characters[activePlayer].name : null;
   const myTurn = activePlayer === playerId;
 
-  renderLog();
+  renderUnifiedFeed();
   renderRoomMap();
 
   if(p.status==='idle' || !p.currentScene){
@@ -727,6 +787,7 @@ function renderAdventure(){
   const choicesDiv = document.getElementById('choices');
   const rollPrompt = document.getElementById('rollPrompt');
   choicesDiv.innerHTML = '';
+  clearIntentHint();
 
   if(sc.type==='combate' && sc.enemy){
     enemyBlock.classList.remove('hidden');
@@ -758,22 +819,23 @@ function renderAdventure(){
   if(sc.type==='combate' && sc.enemy){
     const cd = CLASSES[myChar.cls];
     const hasPotion = myChar.inventory.includes('Pocion menor de curacion');
-    addChoice('Atacar', ()=>sendAction('attack'));
-    addChoice(cd.special.split(':')[0], ()=>sendAction('special'), p.usedSpecialThisScene);
-    addChoice('Defenderse (reduce el daño que recibis)', ()=>sendAction('defend'));
-    addChoice('Beber pocion de curacion', ()=>sendAction('usepotion'), !hasPotion);
-    addChoice('Intentar huir', ()=>sendAction('flee'));
+    addChoice('Atacar', ()=>sendAction('attack'), false, 'attack');
+    const specialUsed = !!(sc.usedSpecialBy && sc.usedSpecialBy.includes(playerId));
+    addChoice(cd.special.split(':')[0], ()=>sendAction('special'), specialUsed, 'special');
+    addChoice('Defenderse (reduce el daño que recibis)', ()=>sendAction('defend'), false, 'defend');
+    addChoice('Beber pocion de curacion', ()=>sendAction('usepotion'), !hasPotion, 'usepotion');
+    addChoice('Intentar huir', ()=>sendAction('flee'), false, 'flee');
   } else if(sc.type==='hallazgo'){
-    addChoice('Recoger el hallazgo', ()=>sendAction('collect'));
-    addChoice('Seguir de largo', ()=>sendAction('skip'));
+    addChoice('Recoger el hallazgo', ()=>sendAction('collect'), false, 'collect');
+    addChoice('Seguir de largo', ()=>sendAction('skip'), false, 'skip');
   } else if(sc.type==='puerta'){
-    addChoice('Buscar la llave escondida', ()=>sendAction('search_key'));
-    addChoice('Forzar la puerta', ()=>sendAction('force_door'));
-    addChoice('Tomar otro camino', ()=>sendAction('skip'));
+    addChoice('Buscar la llave escondida', ()=>sendAction('search_key'), false, 'search_key');
+    addChoice('Forzar la puerta', ()=>sendAction('force_door'), false, 'force_door');
+    addChoice('Tomar otro camino', ()=>sendAction('skip'), false, 'skip');
   } else {
-    addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+sc.dc+')', ()=>sendAction('check'));
-    addChoice('Probar otro enfoque (mas dificil)', ()=>sendAction('check_alt'));
-    addChoice('Evitar la situacion', ()=>sendAction('skip'));
+    addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+sc.dc+')', ()=>sendAction('check'), false, 'check');
+    addChoice('Probar otro enfoque (mas dificil)', ()=>sendAction('check_alt'), false, 'check_alt');
+    addChoice('Evitar la situacion', ()=>sendAction('skip'), false, 'skip');
   }
 }
 
@@ -817,26 +879,41 @@ function renderSceneImage(sc){
 
 function renderTurnStrip(){
   const el = document.getElementById('turnStrip');
+  const label = document.querySelector('#turnStripPanel .small-note');
   if(!el) return;
   const p = partyCache;
   const chars = (p && p.characters) || {};
-  const turnOrder = (p.turnOrder && p.turnOrder.length) ? p.turnOrder : Object.keys(chars).sort();
-  if(!turnOrder.length){ el.innerHTML = '<p class="small-note">Nadie en la fiesta todavia.</p>'; return; }
-  const activeIdx = p.turnIndex % turnOrder.length;
-  el.innerHTML = turnOrder.map((id,i)=>{
+  const sc = p && p.currentScene;
+
+  if(sc && sc.type==='combate' && sc.combatOrder && sc.combatOrder.length){
+    if(label) label.textContent = 'Orden de iniciativa en este combate';
+    el.innerHTML = sc.combatOrder.map((entry,i)=>{
+      const isActive = i===sc.combatIdx;
+      const fled = entry.type==='player' && sc.fledIds && sc.fledIds.includes(entry.id);
+      const icon = entry.type==='enemy' ? '💀' : (CLASS_ICON[chars[entry.id] && chars[entry.id].cls] || '🧙');
+      return '<div class="turn-strip-item'+(isActive?' active':'')+'" style="'+(fled?'opacity:0.3;':'')+'" title="'+entry.name+' (iniciativa '+entry.init+')'+(fled?' — huyo':'')+'">'+icon+'</div>';
+    }).join('');
+    return;
+  }
+
+  if(label) label.textContent = 'Orden de turno (quien explora a continuacion)';
+  const turnQueue = (p && p.turnQueue && p.turnQueue.length) ? p.turnQueue : Object.keys(chars).sort();
+  if(!turnQueue.length){ el.innerHTML = '<p class="small-note">Nadie en la fiesta todavia.</p>'; return; }
+  el.innerHTML = turnQueue.map((id,i)=>{
     const c = chars[id];
     if(!c) return '';
-    const isActive = i===activeIdx;
+    const isActive = i===0;
     return '<div class="turn-strip-item'+(isActive?' active':'')+'" title="'+c.name+'">'+(CLASS_ICON[c.cls]||'🧙')+'</div>';
   }).join('');
 }
 
-function addChoice(label, fn, disabled){
+function addChoice(label, fn, disabled, kind){
   const btn = document.createElement('button');
   btn.className='choice-btn';
   btn.textContent = label;
+  if(kind) btn.dataset.kind = kind;
   if(disabled){ btn.disabled=true; btn.style.opacity=0.5; }
-  btn.addEventListener('click', fn);
+  btn.addEventListener('click', ()=>{ clearIntentHint(); fn(); });
   document.getElementById('choices').appendChild(btn);
 }
 
@@ -854,18 +931,26 @@ function sendActionWithRoll(kind, clientRoll){
   socket.emit('action', {code: currentCode, playerId, kind, clientRoll});
 }
 
-function renderLog(){
-  const log = document.getElementById('advLog');
-  const entries = (partyCache && partyCache.log) || [];
-  log.innerHTML = entries.map(l=>{
-    if(l.kind==='dm'){
-      return '<p class="dm-line"><span class="tag dm">🎭 DM</span> <em>'+l.text+'</em></p>';
+function renderUnifiedFeed(){
+  const feedEl = document.getElementById('unifiedFeed');
+  if(!feedEl || !partyCache) return;
+  const logEntries = (partyCache.log||[]).map(l=>Object.assign({kindGroup:'log'}, l));
+  const chatEntries = (partyCache.chat||[]).map(m=>Object.assign({kindGroup:'chat'}, m));
+  const all = logEntries.concat(chatEntries).sort((a,b)=> (a.ts||0) - (b.ts||0));
+
+  feedEl.innerHTML = all.map(e=>{
+    if(e.kindGroup==='chat'){
+      const mine = e.playerId===playerId ? ' me' : '';
+      return '<div class="chat-msg'+mine+'"><span class="who">'+(e.name||'Anonimo')+':</span> '+escapeHtml(e.text)+'</div>';
     }
-    const tagClass = l.kind==='ok'?'ok':(l.kind==='bad'?'bad':'');
-    const tagText = l.kind==='ok'?'OK':(l.kind==='bad'?'X':'-');
-    return '<p><span class="tag '+tagClass+'">'+tagText+'</span> '+l.text+'</p>';
+    if(e.kind==='dm'){
+      return '<p class="dm-line"><span class="tag dm">🎭 DM</span> <em>'+e.text+'</em></p>';
+    }
+    const tagClass = e.kind==='ok'?'ok':(e.kind==='bad'?'bad':'');
+    const tagText = e.kind==='ok'?'OK':(e.kind==='bad'?'X':'-');
+    return '<p><span class="tag '+tagClass+'">'+tagText+'</span> '+e.text+'</p>';
   }).join('');
-  log.scrollTop = log.scrollHeight;
+  feedEl.scrollTop = feedEl.scrollHeight;
 }
 
 /* ================= INIT ================= */

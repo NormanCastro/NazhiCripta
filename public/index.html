@@ -201,18 +201,14 @@
           <div id="turnStrip" class="turn-strip"></div>
         </div>
 
-        <div class="two-col">
-          <div class="panel">
-            <h3>Bitacora</h3>
-            <div class="log" id="advLog"></div>
-          </div>
-          <div class="panel">
-            <h3>Chat de la fiesta</h3>
-            <div class="log" id="chatLogAdv" style="max-height:280px;"></div>
-            <div style="display:flex;gap:6px;margin-top:8px;">
-              <input type="text" id="chatInputAdv" placeholder="Escribi un mensaje..." maxlength="500" style="flex:1;">
-              <button class="action gold" id="chatSendBtnAdv">Enviar</button>
-            </div>
+        <div class="panel">
+          <h3>Bitacora y Chat</h3>
+          <p class="small-note">Podes hablar con tus compañeros, o escribir lo que tu personaje quiere hacer (ej: "ataco", "busco la llave", "me defiendo") — si coincide con una opcion disponible en tu turno, te la resalto para que la confirmes.</p>
+          <div class="log log-tall" id="unifiedFeed"></div>
+          <div id="intentHint" class="small-note hidden" style="color:var(--accent-3);margin-top:6px;"></div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <input type="text" id="chatInputAdv" placeholder="Hablá con tu grupo, o decí que queres hacer..." maxlength="500" style="flex:1;">
+            <button class="action gold" id="chatSendBtnAdv">Enviar</button>
           </div>
         </div>
       </div>
