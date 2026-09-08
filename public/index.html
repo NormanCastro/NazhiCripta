@@ -138,26 +138,30 @@
       <div id="mySheetContent"></div>
     </div>
 
-    <div class="panel hidden" id="adventureIntro">
-      <h2>La Cripta te espera</h2>
-      <p id="partyTurnInfo">Explora salas al azar: combates, encuentros sociales, trampas y hallazgos.</p>
-      <button class="action" id="startAdvBtn">Empezar mi turno</button>
-    </div>
-
-    <div class="two-col hidden" id="adventureBoard">
-      <div class="panel" id="scenePanel">
-        <h3 id="sceneTitle">-</h3>
-        <p id="sceneText"></p>
-        <p class="small-note" id="actorNote"></p>
-        <div id="enemyBlock" class="hidden">
-          <div class="stat-row">
-            <span id="enemyName"></span>
-            <span id="enemyHpText"></span>
-          </div>
-          <div class="hp-bar-wrap"><div class="enemy-hp-bar" id="enemyHpBar" style="width:100%"></div></div>
+    <div class="two-col hidden" id="adventureLayout">
+      <div>
+        <div class="panel hidden" id="adventureIntro">
+          <h2>La Cripta te espera</h2>
+          <p id="partyTurnInfo">Explora salas al azar: combates, encuentros sociales, trampas y hallazgos.</p>
+          <button class="action" id="startAdvBtn">Empezar mi turno</button>
         </div>
-        <p class="small-note hidden" id="rollPrompt"></p>
-        <div id="choices" style="margin-top:14px;"></div>
+
+        <div class="panel hidden" id="adventureBoard">
+          <div class="panel" id="scenePanel" style="margin-bottom:0;">
+            <h3 id="sceneTitle">-</h3>
+            <p id="sceneText"></p>
+            <p class="small-note" id="actorNote"></p>
+            <div id="enemyBlock" class="hidden">
+              <div class="stat-row">
+                <span id="enemyName"></span>
+                <span id="enemyHpText"></span>
+              </div>
+              <div class="hp-bar-wrap"><div class="enemy-hp-bar" id="enemyHpBar" style="width:100%"></div></div>
+            </div>
+            <p class="small-note hidden" id="rollPrompt"></p>
+            <div id="choices" style="margin-top:14px;"></div>
+          </div>
+        </div>
       </div>
       <div class="panel">
         <h3>Bitacora</h3>
