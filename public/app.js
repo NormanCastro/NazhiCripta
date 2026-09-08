@@ -19,7 +19,7 @@ const CLASSES = {
   druida:{name:'Druida', hitDie:8, primary:'SAB', desc:'Guardian de la naturaleza que canaliza el poder salvaje.', special:'Forma Salvaje: un zarpazo salvaje inflige 2d8 de daño directo, una vez por combate.'},
   monje:{name:'Monje', hitDie:8, primary:'DES', desc:'Marcial disciplinado que golpea con velocidad y precision.', special:'Golpe Certero: dos golpes veloces que nunca fallan, 2d6+Destreza de daño, una vez por combate.'}
 };
-const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰' };
+const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰', puerta:'🚪' };
 const ABILS = ['FUE','DES','CON','INT','SAB','CAR'];
 const ABIL_LABEL = {FUE:'Fuerza',DES:'Destreza',CON:'Constitucion',INT:'Inteligencia',SAB:'Sabiduria',CAR:'Carisma'};
 const ORIGENES = [
@@ -277,9 +277,16 @@ document.getElementById('diceRollBtn').addEventListener('click', ()=>{
   const modv = parseInt(document.getElementById('diceMod').value)||0;
   const rolls = rollMultiple(qty, die);
   const total = rolls.reduce((s,v)=>s+v,0) + modv;
+  let flair = '';
+  if(die===20 && qty===1){
+    if(rolls[0]===20) flair = '<div class="roll-highlight">¡NATURAL 20 — CRITICO!</div>';
+    else if(rolls[0]===1) flair = '<div style="color:var(--accent);font-weight:bold;">¡NATURAL 1 — PIFIA!</div>';
+    renderDiceBox(rolls[0]);
+  }
   document.getElementById('diceResult').innerHTML =
     '<div><strong>'+qty+'d'+die+(modv? fmtMod(modv):'')+'</strong></div>'+
     '<div>Tiradas: '+rolls.join(', ')+'</div>'+
+    flair+
     '<div style="font-size:1.3rem;color:var(--accent-3);font-weight:bold;">Total: '+total+'</div>';
 
   if(pendingAction){
@@ -289,6 +296,15 @@ document.getElementById('diceRollBtn').addEventListener('click', ()=>{
     sendActionWithRoll(kind, rolls[0]);
   }
 });
+
+function renderDiceBox(value){
+  const shape = document.getElementById('d20Shape');
+  if(!shape) return;
+  document.getElementById('d20Value').textContent = value;
+  shape.classList.remove('d20-crit','d20-fumble');
+  if(value===20) shape.classList.add('d20-crit');
+  else if(value===1) shape.classList.add('d20-fumble');
+}
 
 /* ================= SOCKET.IO / FIESTA EN VIVO ================= */
 const playerId = getPlayerId();
@@ -397,69 +413,95 @@ function sendChat(){
 }
 
 /* ================= AVENTURA (reacciona al estado del servidor) ================= */
-const ROLL_REQUIRED_KINDS = ['attack','special','flee','check','check_alt'];
+const ROLL_REQUIRED_KINDS = ['attack','special','flee','check','check_alt','search_key','force_door'];
+let viewMode = 'scene'; // 'scene' | 'map'
+let quickPanelMode = null; // 'habilidades' | 'inventario' | 'registro' | null
 
 document.getElementById('startAdvBtn').addEventListener('click', ()=>{
   if(!currentCode) return;
   socket.emit('start_turn', {code: currentCode, playerId});
 });
 
-document.getElementById('sheetToggleBtn').addEventListener('click', ()=>{
-  document.getElementById('mySheetPanel').classList.toggle('hidden');
-  renderMySheet();
+document.getElementById('viewToggleBtn').addEventListener('click', ()=>{
+  viewMode = viewMode==='map' ? 'scene' : 'map';
+  applyViewMode();
 });
+
+function applyViewMode(){
+  const hasScene = !!(partyCache && partyCache.currentScene);
+  document.getElementById('adventureIntro').classList.toggle('hidden', hasScene || viewMode==='map');
+  document.getElementById('sceneView').classList.toggle('hidden', !hasScene || viewMode==='map');
+  document.getElementById('mapView').classList.toggle('hidden', viewMode!=='map');
+  document.getElementById('viewToggleBtn').textContent = viewMode==='map' ? '📖 Ver escena' : '🔍 Ver mapa';
+  document.getElementById('viewerHeading').textContent = viewMode==='map' ? 'Mapa de la cripta' : (hasScene ? (partyCache.currentScene.title||'Escena') : 'La Cripta te espera');
+}
+
+document.getElementById('btnHabilidades').addEventListener('click', ()=> toggleQuickPanel('habilidades'));
+document.getElementById('btnInventario').addEventListener('click', ()=> toggleQuickPanel('inventario'));
+document.getElementById('btnRegistro').addEventListener('click', ()=> toggleQuickPanel('registro'));
+
+function toggleQuickPanel(mode){
+  quickPanelMode = (quickPanelMode===mode) ? null : mode;
+  renderQuickPanel();
+}
+
+function renderQuickPanel(){
+  const panel = document.getElementById('quickSubPanel');
+  const c = partyCache && partyCache.characters[playerId];
+  if(!quickPanelMode || !c){ panel.classList.add('hidden'); panel.innerHTML=''; return; }
+  panel.classList.remove('hidden');
+  const cd = CLASSES[c.cls];
+  if(quickPanelMode==='habilidades'){
+    const statsHtml = ABILS.map(a=>'<div class="stat-row"><span>'+ABIL_LABEL[a]+'</span><span class="stat-val">'+c.stats[a]+' ('+fmtMod(mod(c.stats[a]))+')</span></div>').join('');
+    panel.innerHTML = '<h4 style="margin:0 0 6px 0;">Habilidad especial</h4><p class="small-note">'+cd.special+'</p>'+
+      '<h4 style="margin:10px 0 4px 0;">Atributos</h4>'+statsHtml;
+  } else if(quickPanelMode==='inventario'){
+    panel.innerHTML = '<h4 style="margin:0 0 6px 0;">Inventario</h4>'+
+      (c.inventory.length ? '<ul style="margin:0;padding-left:18px;">'+c.inventory.map(i=>'<li class="small-note">'+i+'</li>').join('')+'</ul>' : '<p class="small-note">(vacio)</p>');
+  } else if(quickPanelMode==='registro'){
+    const p = partyCache;
+    panel.innerHTML = '<h4 style="margin:0 0 6px 0;">Registro de la partida</h4>'+
+      '<div class="stat-row"><span>Nivel de '+c.name+'</span><span class="stat-val">'+c.level+'</span></div>'+
+      '<div class="stat-row"><span>Salas exploradas por la fiesta</span><span class="stat-val">'+(p.totalRooms||0)+'</span></div>'+
+      '<div class="stat-row"><span>Jugadores en la fiesta</span><span class="stat-val">'+Object.keys(p.characters||{}).length+'</span></div>';
+  }
+}
 
 function refreshAdventureTab(){
   const hasChar = !!(partyCache && partyCache.characters[playerId]);
   document.getElementById('noCharWarning').classList.toggle('hidden', hasChar);
-  document.getElementById('mapPanel').classList.toggle('hidden', !hasChar);
   document.getElementById('adventureLayout').classList.toggle('hidden', !hasChar);
   if(!hasChar){
-    document.getElementById('adventureIntro').classList.add('hidden');
-    document.getElementById('adventureBoard').classList.add('hidden');
-    document.getElementById('mySheetPanel').classList.add('hidden');
     return;
   }
   renderAdventure();
   renderRoomMap();
-  if(!document.getElementById('mySheetPanel').classList.contains('hidden')) renderMySheet();
-}
-
-function renderMySheet(){
-  const c = partyCache && partyCache.characters[playerId];
-  if(!c){ document.getElementById('mySheetContent').innerHTML=''; return; }
-  const cd = CLASSES[c.cls];
-  const statsHtml = ABILS.map(a=>'<div class="stat-row"><span>'+ABIL_LABEL[a]+'</span><span class="stat-val">'+c.stats[a]+' ('+fmtMod(mod(c.stats[a]))+')</span></div>').join('');
-  document.getElementById('mySheetContent').innerHTML =
-    '<h3>'+c.name+' <span class="badge">Nivel '+c.level+'</span></h3>'+
-    '<p><em>'+RACES[c.race].name+' - '+cd.name+'</em></p>'+
-    '<div class="stat-row"><span>Vida</span><span class="stat-val">'+c.hp+' / '+c.maxHp+'</span></div>'+
-    '<div class="stat-row"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
-    '<div class="stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>'+
-    '<h4 style="margin-top:12px;">Atributos</h4>'+statsHtml+
-    '<h4 style="margin-top:12px;">Habilidad especial</h4><p class="small-note">'+cd.special+'</p>'+
-    '<h4 style="margin-top:12px;">Inventario</h4><p class="small-note">'+(c.inventory.length?c.inventory.join(', '):'(vacio)')+'</p>';
+  renderCharCard();
+  renderPartyCard();
+  renderQuickPanel();
 }
 
 const ROOM_NAME = {
   combate:'Camara de Combate', social:'Salon de Encuentro', exploracion:'Corredor Antiguo',
-  trampa:'Camara de Trampas', hallazgo:'Boveda del Tesoro'
+  trampa:'Camara de Trampas', hallazgo:'Boveda del Tesoro', puerta:'Puerta Cerrada'
 };
 
 // Puntos fijos sobre TU imagen de mapa (public/dungeon-map.jpg), en % del ancho/alto.
 // Cada nueva sala que un jugador explora avanza SU PROPIO token al siguiente punto.
+// "image" (opcional) es la ilustracion que se muestra en el visor cuando un jugador esta ahi.
 const MAP_POINTS = [
-  {x:6,  y:9,  label:'Entrada de la escalera'},
-  {x:13, y:23, label:'Guardia de gargolas'},
-  {x:11, y:39, label:'Estudio de la alfombra roja'},
-  {x:4,  y:51, label:'Camara lateral'},
-  {x:14, y:71, label:'Caverna del pantano'},
-  {x:42, y:47, label:'Cruce del puente'},
-  {x:40, y:17, label:'Gran salon del banquete'},
-  {x:61, y:23, label:'Camara de los sarcofagos'},
-  {x:79, y:11, label:'Circulo ritual'},
-  {x:83, y:46, label:'Cueva de la cascada'}
+  {x:6,  y:9,  label:'Entrada de la Cueva', image:'/scenes/room1-entrada-cueva.jpg'},
+  {x:13, y:23, label:'Vestibulo de Guardianes', image:'/scenes/room2-vestibulo-guardianes.jpg'},
+  {x:11, y:39, label:'Corredor Olvidado'},
+  {x:4,  y:51, label:'Gran Salon', image:'/scenes/room4-gran-salon.jpg'},
+  {x:14, y:71, label:'Caverna del Pantano'},
+  {x:42, y:47, label:'Cruce del Puente'},
+  {x:40, y:17, label:'Camara del Ritual'},
+  {x:61, y:23, label:'Sala de los Sarcofagos'},
+  {x:79, y:11, label:'Circulo Sagrado'},
+  {x:83, y:46, label:'Celdas', image:'/scenes/room10-celdas.jpg'}
 ];
+const DOOR_SCENE_IMAGE = '/scenes/escena-puerta-cerrada.jpg';
 const TOKEN_COLORS = ['#d9a53d','#3fae8c','#d1543f','#7a9fd9','#c76bd9','#8fd93f'];
 function colorForPlayer(playerId){
   let h=0; for(let i=0;i<playerId.length;i++) h=(h*31+playerId.charCodeAt(i))>>>0;
@@ -472,8 +514,23 @@ function ensureMapDom(){
   mapEl.innerHTML =
     '<div id="mapWrap" style="position:relative;">'+
       '<img id="mapImg" src="/dungeon-map.jpg" alt="Mapa de la cripta" style="width:100%;display:block;border-radius:8px;border:2px solid var(--border);">'+
+      '<svg id="mapFog" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></svg>'+
       '<div id="mapTokens" style="position:absolute;inset:0;"></div>'+
     '</div>';
+}
+
+function renderFog(revealedSet){
+  const fogEl = document.getElementById('mapFog');
+  let svg = '<defs><filter id="fogSoft" x="-50%" y="-50%" width="200%" height="200%">'+
+            '<feGaussianBlur stdDeviation="2.2"/></filter></defs>';
+  svg += '<mask id="fogMask"><rect x="0" y="0" width="100" height="100" fill="white"/>';
+  revealedSet.forEach(idx=>{
+    const pt = MAP_POINTS[idx];
+    if(pt) svg += '<circle cx="'+pt.x+'" cy="'+pt.y+'" r="13" fill="black" filter="url(#fogSoft)"/>';
+  });
+  svg += '</mask>';
+  svg += '<rect x="0" y="0" width="100" height="100" fill="rgba(6,5,4,0.86)" mask="url(#fogMask)"/>';
+  fogEl.innerHTML = svg;
 }
 
 function renderRoomMap(){
@@ -488,6 +545,11 @@ function renderRoomMap(){
 
   const turnOrder = (p.turnOrder && p.turnOrder.length) ? p.turnOrder : Object.keys(chars).sort();
   const activePlayerId = (p.currentScene && turnOrder.length) ? turnOrder[p.turnIndex % turnOrder.length] : null;
+
+  // niebla: se despeja donde la fiesta ya paso (mas la posicion actual de cada uno)
+  const revealed = new Set(p.fogRevealed||[]);
+  ids.forEach(id=> revealed.add(chars[id].mapPos));
+  renderFog(revealed);
 
   const container = document.getElementById('mapTokens');
   // sacar tokens de jugadores que ya no existen (raro, pero por las dudas)
@@ -519,10 +581,61 @@ function renderRoomMap(){
   });
 }
 
+const CLASS_ICON = {
+  guerrero:'⚔️', mago:'🔮', picaro:'🗡️', clerigo:'✨', barbaro:'🪓',
+  explorador:'🏹', paladin:'🛡️', bardo:'🎵', druida:'🌿', monje:'🥋'
+};
+
+function hpBarColor(pct, downed){
+  if(downed) return '#5c4c3a';
+  return pct>50 ? 'var(--accent-2)' : (pct>20 ? 'var(--accent-3)' : 'var(--accent)');
+}
+
+function renderCharCard(){
+  const panel = document.getElementById('charCardPanel');
+  if(!panel) return;
+  const c = partyCache && partyCache.characters[playerId];
+  if(!c){ panel.innerHTML = '<p class="small-note">Publica tu personaje en la Fiesta.</p>'; return; }
+  const cd = CLASSES[c.cls];
+  const hpPct = Math.max(0, Math.min(100, Math.round((c.hp/c.maxHp)*100)));
+  const downed = c.hp<=0;
+  const specialPct = partyCache.usedSpecialThisScene ? 0 : 100;
+  panel.innerHTML =
+    '<div class="char-card-head">'+
+      '<div class="avatar-circle">'+(CLASS_ICON[c.cls]||'🧙')+'</div>'+
+      '<div><div class="cc-name">'+c.name+'</div><div class="cc-sub">'+cd.name+' — Nivel '+c.level+'</div></div>'+
+    '</div>'+
+    '<div class="stat-bar-row"><div class="sbr-label"><span>Vida</span><span>'+(downed?'Caido':(c.hp+' / '+c.maxHp))+'</span></div>'+
+      '<div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:'+hpPct+'%;background:'+hpBarColor(hpPct,downed)+';"></div></div></div>'+
+    '<div class="stat-bar-row"><div class="sbr-label"><span>Especial</span><span>'+(specialPct?'Lista':'Usada')+'</span></div>'+
+      '<div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:'+specialPct+'%;background:var(--accent-2);"></div></div></div>'+
+    '<div class="stat-row"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
+    '<div class="stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>';
+}
+
+function renderPartyCard(){
+  const panel = document.getElementById('partyCardPanel');
+  if(!panel) return;
+  const p = partyCache;
+  const chars = (p && p.characters) || {};
+  const ids = Object.keys(chars).filter(id=>id!==playerId);
+  if(!ids.length){ panel.innerHTML = '<h4 style="margin:0;">Fiesta</h4><p class="small-note">Nadie mas se unio todavia.</p>'; return; }
+  panel.innerHTML = '<h4 style="margin:0 0 8px 0;">Fiesta</h4>' + ids.map(id=>{
+    const c = chars[id];
+    const pct = Math.max(0, Math.min(100, Math.round((c.hp/c.maxHp)*100)));
+    const downed = c.hp<=0;
+    return '<div class="party-member-row">'+
+      '<div class="avatar-circle pm-avatar">'+(CLASS_ICON[c.cls]||'🧙')+'</div>'+
+      '<div class="pm-info">'+
+        '<div class="pm-name"><span>'+c.name+'</span><span class="small-note">Nv.'+c.level+'</span></div>'+
+        '<div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:'+pct+'%;background:'+hpBarColor(pct,downed)+';"></div></div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
 function renderAdventure(){
   const p = partyCache;
-  const introEl = document.getElementById('adventureIntro');
-  const boardEl = document.getElementById('adventureBoard');
 
   const turnOrder = (p.turnOrder && p.turnOrder.length) ? p.turnOrder : Object.keys(p.characters).sort();
   const activePlayer = turnOrder.length ? turnOrder[p.turnIndex % turnOrder.length] : null;
@@ -534,23 +647,22 @@ function renderAdventure(){
 
   if(p.status==='idle' || !p.currentScene){
     clearPendingAction();
-    introEl.classList.remove('hidden');
-    boardEl.classList.add('hidden');
     document.getElementById('partyTurnInfo').textContent = myTurn || !activeName
       ? 'Es tu turno de explorar la cripta.'
       : ('Es el turno de '+activeName+'. Estas viendo la fiesta en vivo — esperá tu turno.');
     document.getElementById('startAdvBtn').disabled = !(myTurn || !activeName);
+    applyViewMode();
     return;
   }
 
-  introEl.classList.add('hidden');
-  boardEl.classList.remove('hidden');
   const sc = p.currentScene;
   document.getElementById('sceneTitle').textContent = sc.title || '-';
   document.getElementById('sceneText').textContent = sc.text || '';
   document.getElementById('actorNote').textContent = myTurn
     ? 'Es tu turno de decidir.'
     : ('Esta escena la esta jugando '+(activeName||'otro jugador')+'. La estas viendo en vivo.');
+  applyViewMode();
+  renderSceneImage(sc);
 
   const enemyBlock = document.getElementById('enemyBlock');
   const choicesDiv = document.getElementById('choices');
@@ -592,10 +704,34 @@ function renderAdventure(){
   } else if(sc.type==='hallazgo'){
     addChoice('Recoger el hallazgo', ()=>sendAction('collect'));
     addChoice('Seguir de largo', ()=>sendAction('skip'));
+  } else if(sc.type==='puerta'){
+    addChoice('Buscar la llave escondida', ()=>sendAction('search_key'));
+    addChoice('Forzar la puerta', ()=>sendAction('force_door'));
+    addChoice('Tomar otro camino', ()=>sendAction('skip'));
   } else {
     addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+sc.dc+')', ()=>sendAction('check'));
     addChoice('Probar otro enfoque (mas dificil)', ()=>sendAction('check_alt'));
     addChoice('Evitar la situacion', ()=>sendAction('skip'));
+  }
+}
+
+function renderSceneImage(sc){
+  const box = document.getElementById('sceneImageBox');
+  const p = partyCache;
+  const myChar = p && p.characters[playerId];
+  let src = null;
+  if(sc.type==='combate' && sc.enemy && sc.enemy.image){
+    src = sc.enemy.image;
+  } else if(sc.type==='puerta'){
+    src = DOOR_SCENE_IMAGE;
+  } else if(myChar && typeof myChar.mapPos==='number' && myChar.mapPos>=0){
+    const pt = MAP_POINTS[myChar.mapPos];
+    if(pt && pt.image) src = pt.image;
+  }
+  if(src){
+    box.innerHTML = '<img src="'+src+'" alt="'+(sc.title||'Escena')+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px;display:block;">';
+  } else {
+    box.innerHTML = '<div class="scene-image-placeholder"><span class="sip-icon">🖼️</span><span class="small-note">Imagen de la escena (proximamente)</span></div>';
   }
 }
 

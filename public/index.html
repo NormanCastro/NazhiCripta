@@ -37,14 +37,46 @@
         <li><strong>1. Crea tu personaje.</strong> Elegis raza y clase (10 clases clasicas disponibles), tiras tus atributos con los dados, y el juego arma una breve historia de origen.</li>
         <li><strong>2. Atributos.</strong> Fuerza (FUE), Destreza (DES), Constitucion (CON), Inteligencia (INT), Sabiduria (SAB) y Carisma (CAR). El modificador es (valor - 10) dividido 2, redondeado hacia abajo.</li>
         <li><strong>3. Tiradas.</strong> Cuando tu accion requiere una tirada, el dado D20 flotante se ilumina — tocalo y tira vos mismo. El resultado se suma al modificador correspondiente contra una Dificultad (CD) o la Clase de Armadura del rival.</li>
-        <li><strong>4. Iniciativa.</strong> Al entrar en combate, vos y el enemigo tiran d20 (vos con tu modificador de Destreza). Quien saca mas alto actua primero.</li>
-        <li><strong>5. Combate.</strong> Ademas de Atacar y tu habilidad especial, podes Defenderte (reducis el daño que recibis) o beber una Pocion si tenes una en el inventario. 0 de vida = caes, pero te recuperas tras un descanso.</li>
-        <li><strong>6. Tu hoja de personaje.</strong> Desde la pestaña Aventura, el boton "Mi hoja de personaje" te muestra tus estadisticas, vida e inventario actualizados en cualquier momento.</li>
-        <li><strong>7. El mapa.</strong> Arriba de la Aventura vas viendo un mapa con las salas que tu fiesta ya recorrio y el tipo de cada una (combate, encuentro social, trampa, hallazgo).</li>
-        <li><strong>8. Fiesta.</strong> Entra a un codigo de sala junto a tus amigos: todos ven el mismo tablero, el mismo mapa, la misma bitacora y el mismo chat, en vivo.</li>
-        <li><strong>9. Progresion.</strong> Ganar encuentros da experiencia; al subir de nivel ganas mas vida y te curas del todo.</li>
+        <li><strong>4. Critico y pifia natural.</strong> Si el D20 sale 20, es un exito automatico (y en combate, daño duplicado) sin importar el modificador. Si sale 1, es un fallo automatico, tambien sin importar el modificador. Son los momentos mas emocionantes del juego.</li>
+        <li><strong>5. Iniciativa.</strong> Al entrar en combate, vos y el enemigo tiran d20 (vos con tu modificador de Destreza). Quien saca mas alto actua primero.</li>
+        <li><strong>6. Combate.</strong> Ademas de Atacar y tu habilidad especial, podes Defenderte (reducis el daño que recibis) o beber una Pocion si tenes una en el inventario. 0 de vida = caes, pero te recuperas tras un descanso.</li>
+        <li><strong>7. Tu hoja de personaje.</strong> Desde la pestaña Aventura, el boton "Mi hoja de personaje" te muestra tus estadisticas, vida e inventario actualizados en cualquier momento.</li>
+        <li><strong>8. El mapa.</strong> Cada jugador tiene su propio marcador que avanza sobre el mapa a medida que explora, y la niebla se despeja donde la fiesta ya paso.</li>
+        <li><strong>9. Fiesta.</strong> Entra a un codigo de sala junto a tus amigos: todos ven el mismo mapa, la misma bitacora y el mismo chat, en vivo. Tu posicion se guarda sola, asi que podes cerrar y volver a entrar sin perder nada.</li>
+        <li><strong>10. Progresion.</strong> Ganar encuentros da experiencia; al subir de nivel ganas mas vida y te curas del todo.</li>
       </ol>
       <p class="small-note">Version simplificada e independiente inspirada en juegos de rol de mesa clasicos; no reproduce reglas ni textos de ningun manual con derechos de autor.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Guia rapida de los dados</h2>
+      <p class="small-note">Un set clasico de rol tiene siete dados: d4, d6, d8, d10, d%, d12 y d20. Cada uno cumple un rol distinto en la mesa.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>d20 — el que decide</h3>
+          <p>Veinte caras, una por cada resultado posible (5% de chance cada una). Es el dado de las decisiones: ataques, tiradas de salvacion y pruebas de habilidad. En esta app lo tiras vos mismo cuando el dado flotante se ilumina.</p>
+        </div>
+        <div class="card">
+          <h3>d4, d6, d8, d10, d12 — el daño</h3>
+          <p>Estos son los dados de daño y curacion: cuanto mas grande el arma o el efecto, mas grande el dado (una daga usa d4, una espada larga d8, un arma pesada de dos manos puede llegar a d12).</p>
+        </div>
+        <div class="card">
+          <h3>d% (porcentual)</h3>
+          <p>Se arma combinando dos d10: uno para las decenas, otro para las unidades. Un 00 y un 5 se lee como 05; dos 0 se leen como 100. Sirve para tablas de probabilidad (por ejemplo, tesoros al azar).</p>
+        </div>
+        <div class="card">
+          <h3>Natural 20 y Natural 1</h3>
+          <p>Un 20 en el dado (sin importar el modificador) suele ser exito automatico, y en combate tambien duplica el daño. Un 1 natural es fallo automatico, sin importar cuan bueno sea tu modificador. Por eso generan tanta emocion en la mesa.</p>
+        </div>
+        <div class="card">
+          <h3>Ventaja y Desventaja</h3>
+          <p>Cuando algo te favorece, tirar con Ventaja significa tirar 2d20 y quedarte con el mas alto. Cuando algo te complica, la Desventaja es tirar 2d20 y quedarte con el mas bajo. Truco: pod\u00e9s simular esto vos mismo con el tirador libre, poniendo cantidad en 2 y dado d20, y eligiendo el resultado que corresponda.</p>
+        </div>
+        <div class="card">
+          <h3>Tip de mesa</h3>
+          <p>El promedio de un d20 es 10.5 — asi que un modificador de +5 o mas ya te hace ganarle a la mayoria de las Dificultades tipicas (10-15). Elegir bien en que atributo subir tus tiradas cambia mucho tu tasa de exito.</p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -125,29 +157,26 @@
       <p>Primero creá un personaje en la pestaña Personaje, y publicalo en la pestaña Fiesta.</p>
     </div>
 
-    <div class="panel hidden" id="mapPanel">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <h3 style="margin:0;">Mapa de la cripta</h3>
-        <button class="action secondary" id="sheetToggleBtn" style="margin:0;">Mi hoja de personaje</button>
-      </div>
-      <div id="roomMap" class="room-map"></div>
-    </div>
-
-    <div class="panel hidden" id="mySheetPanel">
-      <h3>Mi hoja de personaje</h3>
-      <div id="mySheetContent"></div>
-    </div>
-
     <div class="two-col hidden" id="adventureLayout">
       <div>
-        <div class="panel hidden" id="adventureIntro">
-          <h2>La Cripta te espera</h2>
-          <p id="partyTurnInfo">Explora salas al azar: combates, encuentros sociales, trampas y hallazgos.</p>
-          <button class="action" id="startAdvBtn">Empezar mi turno</button>
-        </div>
+        <div class="panel" id="viewerPanel">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+            <h3 style="margin:0;" id="viewerHeading">La Cripta te espera</h3>
+            <button class="action secondary" id="viewToggleBtn" style="margin:0;">🔍 Ver mapa</button>
+          </div>
 
-        <div class="panel hidden" id="adventureBoard">
-          <div class="panel" id="scenePanel" style="margin-bottom:0;">
+          <div id="adventureIntro">
+            <p id="partyTurnInfo">Explora salas al azar: combates, encuentros sociales, trampas y hallazgos.</p>
+            <button class="action" id="startAdvBtn">Empezar mi turno</button>
+          </div>
+
+          <div id="sceneView" class="hidden">
+            <div class="scene-image-box" id="sceneImageBox">
+              <div class="scene-image-placeholder">
+                <span class="sip-icon">🖼️</span>
+                <span class="small-note">Imagen de la escena (proximamente)</span>
+              </div>
+            </div>
             <h3 id="sceneTitle">-</h3>
             <p id="sceneText"></p>
             <p class="small-note" id="actorNote"></p>
@@ -161,11 +190,35 @@
             <p class="small-note hidden" id="rollPrompt"></p>
             <div id="choices" style="margin-top:14px;"></div>
           </div>
+
+          <div id="mapView" class="hidden">
+            <div id="roomMap" class="room-map"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Bitacora</h3>
+          <div class="log" id="advLog"></div>
         </div>
       </div>
-      <div class="panel">
-        <h3>Bitacora</h3>
-        <div class="log" id="advLog"></div>
+
+      <div>
+        <div class="panel" id="charCardPanel"></div>
+        <div class="panel" id="partyCardPanel"></div>
+        <div class="panel">
+          <div class="quick-buttons">
+            <button class="quick-btn" id="btnHabilidades"><span class="qb-icon">✨</span><span>Habilidades</span></button>
+            <button class="quick-btn" id="btnInventario"><span class="qb-icon">🎒</span><span>Inventario</span></button>
+            <button class="quick-btn" id="btnRegistro"><span class="qb-icon">📜</span><span>Registro</span></button>
+          </div>
+          <div class="panel hidden" id="quickSubPanel" style="margin:10px 0 0 0;"></div>
+        </div>
+        <div class="panel">
+          <h3 style="margin:0 0 10px 0;">Dado</h3>
+          <div class="d20-display">
+            <div class="d20-shape" id="d20Shape"><span id="d20Value">-</span></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -182,6 +235,7 @@
   <input type="number" id="diceMod" value="0">
   <button class="action" id="diceRollBtn" style="width:100%;margin-top:10px;">Tirar</button>
   <div id="diceResult" style="margin-top:10px;font-size:0.95rem;"></div>
+  <p class="small-note" style="margin-top:10px;border-top:1px dashed var(--border);padding-top:8px;">Tip: 20 natural = exito automatico (y critico en combate). 1 natural = fallo automatico. Para Ventaja/Desventaja, poné Cantidad en 2 con d20 y quedate con el mas alto (Ventaja) o el mas bajo (Desventaja).</p>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>

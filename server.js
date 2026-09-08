@@ -25,18 +25,19 @@ const CLASSES = {
 };
 
 const ALT_ABIL_BY_TYPE = { social:'FUE', exploracion:'FUE', trampa:'INT' };
-const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰' };
+const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰', puerta:'🚪' };
 const MAP_POINTS_LEN = 10; // debe coincidir con MAP_POINTS.length en public/app.js
 
 const ENEMIES = [
   {name:'Rata gigante', hp:9, ac:11, atk:2, dmg:[1,4], xp:15, init:2},
   {name:'Bandido', hp:14, ac:12, atk:3, dmg:[1,6], xp:25, init:1},
-  {name:'Esqueleto errante', hp:13, ac:13, atk:3, dmg:[1,6], xp:25, init:0},
+  {name:'Esqueleto errante', hp:13, ac:13, atk:3, dmg:[1,6], xp:25, init:0, image:'/enemies/esqueleto.jpg'},
   {name:'Lobo de las sombras', hp:16, ac:12, atk:4, dmg:[1,8], xp:30, init:3},
   {name:'Cultista menor', hp:12, ac:11, atk:2, dmg:[1,4,1], xp:20, init:1},
   {name:'Ogro joven', hp:28, ac:13, atk:5, dmg:[2,6], xp:50, init:-1},
   {name:'Araña venenosa', hp:11, ac:14, atk:3, dmg:[1,6], xp:22, init:3}
 ];
+const GUARD_ENEMY = {name:'Guardia de la Cripta', hp:18, ac:15, atk:4, dmg:[1,8,1], xp:35, init:1, image:'/enemies/guardia.jpg'};
 
 const SOCIAL_SCENES = [
   {title:'El mercader nervioso', text:'Un mercader te ofrece un mapa a cambio de que espantes a un rival suyo sin usar violencia.', abil:'CAR', dc:12,
@@ -61,7 +62,9 @@ const TRAP_SCENES = [
    success:'Abris el cofre con destreza, evitando la aguja, y encontras algo de valor.', fail:'La aguja te pincha; el veneno te resta algo de vida.'}
 ];
 const ITEMS = ['Pocion menor de curacion','Moneda de oro antigua','Gema pequeña','Pergamino ilegible','Daga ornamentada','Amuleto desgastado'];
-const SCENE_TYPES = ['combate','social','exploracion','trampa','hallazgo'];
+const SCENE_TYPES = ['combate','social','exploracion','trampa','hallazgo','puerta'];
+// rooms del mapa (indice 0-based) donde es mas probable toparse con un guardia armado
+const GUARD_ROOM_INDEXES = [1, 9]; // 1 = Vestibulo de Guardianes, 9 = Celdas
 
 function rollDie(sides){ return 1 + Math.floor(Math.random()*sides); }
 function mod(val){ return Math.floor((val-10)/2); }
@@ -70,6 +73,11 @@ function resolveRoll(clientRoll){
   const n = Number(clientRoll);
   if(Number.isInteger(n) && n>=1 && n<=20) return n;
   return rollDie(20);
+}
+function rollKind(roll){
+  if(roll===20) return 'crit';
+  if(roll===1) return 'fumble';
+  return 'normal';
 }
 
 /* ===================== ESTADO EN MEMORIA (por sala/codigo) ===================== */
@@ -95,6 +103,7 @@ function blankParty(code){
     chat: [],
     roomHistory: [],
     totalRooms: 0,
+    fogRevealed: [],
     updatedAt: Date.now()
   };
 }
@@ -189,19 +198,25 @@ function startTurnForPlayer(party, playerId){
   const myChar = party.characters[playerId];
   if(!myChar) return { error: 'No tenes personaje publicado en esta fiesta.' };
 
-  const type = SCENE_TYPES[Math.floor(Math.random()*SCENE_TYPES.length)];
+  const nextMapPos = (typeof myChar.mapPos==='number' && myChar.mapPos>=0) ? (myChar.mapPos+1) % MAP_POINTS_LEN : 0;
+  const guardBias = GUARD_ROOM_INDEXES.includes(nextMapPos) && Math.random() < 0.6;
+  const type = guardBias ? 'combate' : SCENE_TYPES[Math.floor(Math.random()*SCENE_TYPES.length)];
   let scene;
   if(type==='combate'){
-    const base = ENEMIES[Math.floor(Math.random()*ENEMIES.length)];
+    const base = guardBias ? GUARD_ENEMY : ENEMIES[Math.floor(Math.random()*ENEMIES.length)];
     const enemy = Object.assign({}, base, {maxHp: base.hp + (myChar.level-1)*4});
     enemy.hp = enemy.maxHp;
-    scene = {type:'combate', title:'Emboscada! '+enemy.name, text:'Un '+enemy.name.toLowerCase()+' corta el paso.', enemy};
+    const title = guardBias ? 'Un guardia te corta el paso!' : 'Emboscada! '+enemy.name;
+    const text = guardBias ? 'Un guardia de la cripta, armado con espada y escudo, se planta frente a vos.' : 'Un '+enemy.name.toLowerCase()+' corta el paso.';
+    scene = {type:'combate', title, text, enemy};
   } else if(type==='social'){
     scene = Object.assign({type:'social'}, SOCIAL_SCENES[Math.floor(Math.random()*SOCIAL_SCENES.length)]);
   } else if(type==='exploracion'){
     scene = Object.assign({type:'exploracion'}, EXPLORE_SCENES[Math.floor(Math.random()*EXPLORE_SCENES.length)]);
   } else if(type==='trampa'){
     scene = Object.assign({type:'trampa'}, TRAP_SCENES[Math.floor(Math.random()*TRAP_SCENES.length)]);
+  } else if(type==='puerta'){
+    scene = {type:'puerta', title:'Puerta cerrada', text:'Una pesada puerta de roble y hierro bloquea el paso. Podes buscar una llave escondida, forzarla, o tomar otro camino.'};
   } else {
     scene = {type:'hallazgo', title:'Un hallazgo silencioso', text:'Esta sala esta vacia, pero algo brilla entre los escombros.'};
   }
@@ -219,8 +234,12 @@ function startTurnForPlayer(party, playerId){
   if(party.roomHistory.length > 10) party.roomHistory.shift();
 
   // avanza el token de ESTE jugador en el mapa (cada personaje tiene su propia posicion)
-  myChar.mapPos = (typeof myChar.mapPos==='number' && myChar.mapPos>=0) ? (myChar.mapPos+1) % MAP_POINTS_LEN : 0;
+  myChar.mapPos = nextMapPos;
   myChar.lastRoomType = scene.type;
+
+  // niebla: se despeja para toda la fiesta por donde alguien ya paso
+  party.fogRevealed = party.fogRevealed || [];
+  if(!party.fogRevealed.includes(myChar.mapPos)) party.fogRevealed.push(myChar.mapPos);
 
   if(scene.type==='combate'){
     const playerRoll = rollDie(20);
@@ -280,11 +299,16 @@ function doAction(party, playerId, kind, clientRoll){
           return { ok:true };
         } else {
           const roll = resolveRoll(clientRoll);
-          hit = (myChar.cls==='explorador' || myChar.cls==='monje') ? true : (roll+atkStat) >= enemy.ac;
+          const rk = rollKind(roll);
+          const autoHit = myChar.cls==='explorador' || myChar.cls==='monje';
+          if(rk==='fumble' && !autoHit) hit = false;
+          else if(rk==='crit' || autoHit) hit = true;
+          else hit = (roll+atkStat) >= enemy.ac;
           if(myChar.cls==='monje'){ dmg = rollDie(6)+rollDie(6)+atkStat; }
-          else { dmg = rollDie(8) + atkStat + (myChar.cls==='guerrero'?4:0) + (myChar.cls==='paladin'?4:0); }
+          else { dmg = rollDie(8) + atkStat + (myChar.cls==='guerrero'?4:0) + (myChar.cls==='paladin'?4:0) + (rk==='crit'?rollDie(8):0); }
           if(myChar.cls==='picaro' && party.sceneFirstHit) dmg *= 2;
-          pushLog(party, hit?'ok':'bad', myChar.name+' usa su habilidad especial: '+(hit?'impacto por '+dmg+' de daño.':'aun asi falla.'));
+          const flair = rk==='crit' ? ' ¡GOLPE CRITICO!' : (rk==='fumble' && !autoHit ? ' ¡PIFIA NATURAL!' : '');
+          pushLog(party, hit?'ok':'bad', myChar.name+' usa su habilidad especial:'+flair+' '+(hit?'impacto por '+dmg+' de daño.':'aun asi falla.'));
           if(myChar.cls==='paladin' && hit){
             const heal = rollDie(4)+rollDie(4);
             myChar.hp = Math.min(myChar.maxHp, myChar.hp+heal);
@@ -294,11 +318,21 @@ function doAction(party, playerId, kind, clientRoll){
         party.usedSpecialThisScene = true;
       } else {
         const roll = resolveRoll(clientRoll);
+        const rk = rollKind(roll);
         const total = roll+atkStat;
-        hit = total >= enemy.ac;
-        pushLog(party, hit?'ok':'bad', myChar.name+' ataca: d20('+roll+')'+fmtMod(atkStat)+' = '+total+' vs CA '+enemy.ac+' -> '+(hit?'Impacto!':'Falla'));
+        if(rk==='fumble'){
+          hit = false;
+          pushLog(party,'bad', myChar.name+' ataca: d20(1) — ¡PIFIA NATURAL! Falla automaticamente, pase lo que pase el modificador.');
+        } else if(rk==='crit'){
+          hit = true;
+          pushLog(party,'ok', myChar.name+' ataca: d20(20) — ¡GOLPE CRITICO! Impacto automatico.');
+        } else {
+          hit = total >= enemy.ac;
+          pushLog(party, hit?'ok':'bad', myChar.name+' ataca: d20('+roll+')'+fmtMod(atkStat)+' = '+total+' vs CA '+enemy.ac+' -> '+(hit?'Impacto!':'Falla'));
+        }
         if(hit){
-          dmg = rollDie(8) + atkStat;
+          dmg = rollDie(8) + atkStat + (rk==='crit' ? rollDie(8) : 0);
+          if(rk==='crit') pushLog(party,'ok','El critico duplica el dado de daño!');
           if(myChar.cls==='picaro' && party.sceneFirstHit){ dmg*=2; pushLog(party,'ok','Golpe Furtivo: daño duplicado!'); }
           pushLog(party,'ok', myChar.name+' inflige '+dmg+' de daño.');
         }
@@ -337,9 +371,14 @@ function doAction(party, playerId, kind, clientRoll){
 
     } else if(kind==='flee'){
       const roll = resolveRoll(clientRoll);
+      const rk = rollKind(roll);
       const modv = mod(myChar.stats.DES);
-      const success = (roll+modv) >= 12;
-      pushLog(party, success?'ok':'bad', myChar.name+' intenta huir: d20('+roll+')'+fmtMod(modv)+' -> '+(success?'Escapa!':'No logra escapar.'));
+      let success;
+      if(rk==='fumble') success=false;
+      else if(rk==='crit') success=true;
+      else success = (roll+modv) >= 12;
+      const flair = rk==='crit' ? ' ¡GOLPE DE SUERTE!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
+      pushLog(party, success?'ok':'bad', myChar.name+' intenta huir:'+flair+' d20('+roll+')'+fmtMod(modv)+' -> '+(success?'Escapa!':'No logra escapar.'));
       if(success){ advanceTurn(party); }
       else { enemyTurn(party, playerId, false); }
       return { ok:true };
@@ -364,6 +403,51 @@ function doAction(party, playerId, kind, clientRoll){
     return { error:'Accion invalida.' };
   }
 
+  if(sc.type==='puerta'){
+    if(kind==='search_key'){
+      const roll = resolveRoll(clientRoll);
+      const rk = rollKind(roll);
+      const modVal = mod(myChar.stats.INT);
+      let success;
+      if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=13;
+      const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
+      pushLog(party, success?'ok':'bad', myChar.name+' busca la llave:'+flair+' d20('+roll+')'+fmtMod(modVal)+' -> '+(success?'La encuentra!':'No la encuentra.'));
+      if(success){
+        pushLog(party,'ok', 'Con la llave en mano, abris la puerta sin problemas.');
+        const leveled = gainXpAndItem(party, playerId, 15, null);
+        if(leveled) pushLog(party,'ok', leveled);
+      } else {
+        pushLog(party,'bad', 'Buscas un buen rato sin suerte; perdes tiempo pero no te lastimas.');
+      }
+      advanceTurn(party);
+      return { ok:true };
+    } else if(kind==='force_door'){
+      const roll = resolveRoll(clientRoll);
+      const rk = rollKind(roll);
+      const modVal = mod(myChar.stats.FUE);
+      let success;
+      if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=14;
+      const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
+      pushLog(party, success?'ok':'bad', myChar.name+' fuerza la puerta:'+flair+' d20('+roll+')'+fmtMod(modVal)+' -> '+(success?'Cede de un golpe!':'No cede.'));
+      if(success){
+        pushLog(party,'ok', 'La puerta revienta hacia adentro entre astillas.');
+        const leveled = gainXpAndItem(party, playerId, 20, null);
+        if(leveled) pushLog(party,'ok', leveled);
+      } else {
+        const dmg = rollDie(4);
+        damagePlayer(party, playerId, dmg);
+        pushLog(party,'bad', 'Te lastimas el hombro en el intento y recibis '+dmg+' de daño.');
+      }
+      advanceTurn(party);
+      return { ok:true };
+    } else if(kind==='skip'){
+      pushLog(party,'sys', myChar.name+' decide no arriesgarse con la puerta y toma otro camino.');
+      advanceTurn(party);
+      return { ok:true };
+    }
+    return { error:'Accion invalida.' };
+  }
+
   // social / exploracion / trampa
   if(kind==='check' || kind==='check_alt'){
     const useAlt = kind==='check_alt';
@@ -371,10 +455,15 @@ function doAction(party, playerId, kind, clientRoll){
     const dc = useAlt ? sc.dc + 2 : sc.dc;
     const modVal = mod(myChar.stats[abil]);
     const roll = resolveRoll(clientRoll);
+    const rk = rollKind(roll);
     const total = roll+modVal;
-    const success = total >= dc;
+    let success;
+    if(rk==='fumble') success=false;
+    else if(rk==='crit') success=true;
+    else success = total >= dc;
     const prefix = useAlt ? 'Con un enfoque distinto, ' : '';
-    pushLog(party, success?'ok':'bad', prefix+myChar.name+' tira '+abil+': d20('+roll+')'+fmtMod(modVal)+' = '+total+' vs CD '+dc+' -> '+(success?'Exito!':'Fallo'));
+    const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
+    pushLog(party, success?'ok':'bad', prefix+myChar.name+' tira '+abil+':'+flair+' d20('+roll+')'+fmtMod(modVal)+' = '+total+' vs CD '+dc+' -> '+(success?'Exito!':'Fallo'));
     if(success){
       pushLog(party,'ok', sc.success);
       const item = Math.random()<0.4 ? ITEMS[Math.floor(Math.random()*ITEMS.length)] : null;
