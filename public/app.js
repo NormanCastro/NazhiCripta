@@ -504,6 +504,12 @@ function findNamedTarget(norm, excludeSelf){
   return null;
 }
 
+let aiDmAvailable = true; // se pone en false si el server nos avisa que no hay OPENAI_API_KEY configurada
+function btnLabel(btn){
+  const span = btn.querySelector('span');
+  return span ? span.textContent : btn.textContent;
+}
+
 function tryMatchIntent(text){
   clearIntentHint();
   const p = partyCache;
@@ -556,29 +562,52 @@ function tryMatchIntent(text){
     return;
   }
 
+  if(aiDmAvailable){
+    const options = availableButtons.map(b=>({kind:b.dataset.kind, label:btnLabel(b)})).filter(o=>o.kind);
+    socket.emit('classify_intent', {
+      text,
+      options,
+      scene: { type: sc.type, title: sc.title, text: sc.text }
+    }, (res)=>{
+      if(res && res.disabled){ aiDmAvailable = false; }
+      if(res && !res.disabled && !res.error && res.kind && res.kind!=='none'){
+        const btn = availableButtons.find(b=>b.dataset.kind===res.kind);
+        if(btn){ applyIntentKind(res.kind, btn, norm, p, myChar, isCombat, hint, res.narration); return; }
+      }
+      runLocalKeywordMatch(norm, availableButtons, p, myChar, isCombat, hint);
+    });
+    return;
+  }
+  runLocalKeywordMatch(norm, availableButtons, p, myChar, isCombat, hint);
+}
+
+function applyIntentKind(kind, btn, norm, p, myChar, isCombat, hint, narration){
+  const prefix = narration ? '🎙️ '+narration+' ' : '';
+  if(kind==='special' && isCombat && HEAL_SPECIAL_CLASSES.includes(myChar.cls)){
+    const target = findNamedTarget(norm, false) || playerId;
+    sendActionWithTarget('special', target);
+    hint.textContent = prefix+'✅ Hecho: '+(target===playerId?'te curas a vos mismo/a':'curas a '+p.characters[target].name)+'.';
+  } else if(kind==='usepotion' && isCombat){
+    const target = findNamedTarget(norm, false) || playerId;
+    sendActionWithTarget('usepotion', target);
+    hint.textContent = prefix+'✅ Hecho: '+(target===playerId?'usas la pocion en vos mismo/a':'le das la pocion a '+p.characters[target].name)+'.';
+  } else if(kind==='choose_path_A' || kind==='choose_path_B'){
+    sendActionWithTarget('choose_path', kind==='choose_path_A'?'A':'B');
+    hint.textContent = prefix+'✅ Hecho: '+btnLabel(btn);
+  } else {
+    btn.click();
+    hint.textContent = prefix+'✅ Hecho: '+btnLabel(btn);
+  }
+  hint.classList.remove('hidden');
+}
+
+function runLocalKeywordMatch(norm, availableButtons, p, myChar, isCombat, hint){
   for(const btn of availableButtons){
     const kind = btn.dataset.kind;
     const keywords = INTENT_KEYWORDS[kind];
     if(!keywords) continue;
     if(keywords.some(kw => norm.includes(normalizeText(kw)))){
-      // acciones que pueden apuntar a un aliado nombrado: se ejecutan directo, sin pasar por el selector de objetivo
-      if(kind==='special' && isCombat && HEAL_SPECIAL_CLASSES.includes(myChar.cls)){
-        const target = findNamedTarget(norm, false) || playerId;
-        sendActionWithTarget('special', target);
-        hint.textContent = '✅ Hecho: '+(target===playerId?'te curas a vos mismo/a':'curas a '+p.characters[target].name)+'.';
-      } else if(kind==='usepotion' && isCombat){
-        const target = findNamedTarget(norm, false) || playerId;
-        sendActionWithTarget('usepotion', target);
-        hint.textContent = '✅ Hecho: '+(target===playerId?'usas la pocion en vos mismo/a':'le das la pocion a '+p.characters[target].name)+'.';
-      } else if(kind==='choose_path_A' || kind==='choose_path_B'){
-        sendActionWithTarget('choose_path', kind==='choose_path_A'?'A':'B');
-        hint.textContent = '✅ Hecho: '+btn.textContent;
-      } else {
-        // el resto: ejecuta directo tocando la accion real del boton (si pide tirada, el D20 se ilumina igual)
-        btn.click();
-        hint.textContent = '✅ Hecho: '+btn.textContent;
-      }
-      hint.classList.remove('hidden');
+      applyIntentKind(kind, btn, norm, p, myChar, isCombat, hint, null);
       return;
     }
   }
@@ -799,6 +828,8 @@ function renderCharCard(){
   const downed = c.hp<=0;
   const sceneForSpecial = partyCache.currentScene;
   const specialReady = !(sceneForSpecial && sceneForSpecial.type==='combate' && sceneForSpecial.usedSpecialBy && sceneForSpecial.usedSpecialBy.includes(playerId));
+  const specialName = cd.special.split(':')[0];
+  const specialDesc = cd.special.split(':').slice(1).join(':').trim();
   panel.innerHTML =
     '<div class="char-card-head">'+
       '<div class="avatar-ring" style="'+ringStyle(hpPct, specialReady?100:0, downed)+'"><div class="avatar-ring-inner">'+(CLASS_ICON[c.cls]||'🧙')+'</div></div>'+
@@ -807,6 +838,10 @@ function renderCharCard(){
     '<div class="ring-legend">'+
       '<span><span class="dot" style="background:'+hpBarColor(hpPct,downed)+';"></span>❤️ Vida: '+(downed?'Caido':(c.hp+'/'+c.maxHp))+'</span>'+
       '<span><span class="dot" style="background:var(--accent-2);"></span>Especial: '+(specialReady?'Lista':'Usada')+'</span>'+
+    '</div>'+
+    '<div style="margin-top:6px;">'+
+      '<div class="small-note" style="font-weight:bold;color:var(--accent-2);">'+specialName+'</div>'+
+      '<div class="small-note">'+specialDesc+'</div>'+
     '</div>'+
     '<div class="stat-row-mini stat-row" style="margin-top:8px;"><span>Clase de Armadura</span><span class="stat-val">'+c.ac+'</span></div>'+
     '<div class="stat-row-mini stat-row"><span>Experiencia</span><span class="stat-val">'+c.xp+' / '+c.xpNext+'</span></div>'+

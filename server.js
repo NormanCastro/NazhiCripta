@@ -1,13 +1,94 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
+
+// carga variables desde un archivo .env local si existe (sin depender de ninguna libreria extra)
+try {
+  const envPath = path.join(__dirname, '.env');
+  if(fs.existsSync(envPath)){
+    fs.readFileSync(envPath, 'utf8').split('\n').forEach(line=>{
+      const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if(m && m[1] && !(m[1] in process.env)){
+        process.env[m[1]] = (m[2]||'').trim().replace(/^["']|["']$/g,'');
+      }
+    });
+  }
+} catch(e){ /* si falla la carga del .env, seguimos con las env vars del sistema nomas */ }
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+/* ===================== DUNGEON MASTER CON IA (OpenAI) — opcional ===================== */
+// Si OPENAI_API_KEY no esta configurada, el juego funciona igual que siempre: el cliente
+// interpreta los mensajes libres del jugador con una lista de palabras clave (sin IA).
+// Si esta configurada, el servidor usa la IA SOLO para decidir cual de las opciones ya
+// disponibles en la escena actual representa mejor lo que el jugador escribio — el motor
+// de reglas (dados, dc, daño, xp) sigue siendo 100% el mismo de siempre, resuelto aca en
+// el servidor. La IA nunca inventa ni ejecuta mecanicas por su cuenta.
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5-mini';
+const AI_DM_ENABLED = !!OPENAI_API_KEY;
+if(AI_DM_ENABLED) console.log('DM-IA activado (modelo: '+OPENAI_MODEL+')');
+else console.log('DM-IA desactivado (no hay OPENAI_API_KEY configurada) — se usa el interprete de palabras clave.');
+
+async function callOpenAIJson(messages, schema){
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer '+OPENAI_API_KEY
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      messages,
+      temperature: 0.4,
+      max_tokens: 200,
+      response_format: { type:'json_schema', json_schema: { name:'dm_intent', strict:true, schema } }
+    })
+  });
+  if(!resp.ok){
+    const errText = await resp.text().catch(()=>String(resp.status));
+    throw new Error('OpenAI API error '+resp.status+': '+errText.slice(0,300));
+  }
+  const data = await resp.json();
+  const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if(!content) throw new Error('Respuesta vacia de OpenAI');
+  return JSON.parse(content);
+}
+
+async function classifyPlayerIntent(text, options, scene){
+  const kinds = options.map(o=>o.kind).filter(Boolean);
+  const enumList = kinds.concat(['none']);
+  const optionsList = options.map(o=>'- "'+o.kind+'": '+o.label).join('\n');
+  const sceneDesc = scene ? ('Tipo: '+scene.type+'\nTitulo: '+(scene.title||'-')+'\nDescripcion: '+(scene.text||'-')) : 'Sin escena activa.';
+  const system = 'Sos el clasificador de intenciones de un Dungeon Master de un juego de rol por turnos, en español. '+
+    'Tu unico trabajo es, dado un mensaje libre de un jugador, elegir cual de las acciones disponibles representa mejor '+
+    'su intencion, o "none" si el mensaje no corresponde a ninguna (por ejemplo, si es charla entre jugadores o no tiene '+
+    'relacion con la escena). Nunca inventes acciones fuera de la lista. Respondes solo en el formato JSON pedido.';
+  const user = 'Acciones disponibles ahora mismo:\n'+optionsList+
+    '\n\nEscena actual:\n'+sceneDesc+
+    '\n\nMensaje del jugador: "'+String(text).slice(0,300)+'"\n\n'+
+    'Elegi el "kind" mas apropiado (o "none") y escribi una "narracion" corta de Dungeon Master '+
+    '(una sola oracion, en español, sin revelar si tiene exito o fracaso) reaccionando a como el jugador describe intentarlo.';
+  const schema = {
+    type:'object',
+    properties:{
+      kind:{ type:'string', enum: enumList },
+      narration:{ type:'string' }
+    },
+    required:['kind','narration'],
+    additionalProperties:false
+  };
+  return callOpenAIJson([
+    { role:'system', content: system },
+    { role:'user', content: user }
+  ], schema);
+}
 
 /* ===================== DATOS DE JUEGO (autoritativos, en el servidor) ===================== */
 
@@ -849,6 +930,27 @@ io.on('connection', (socket)=>{
 
   socket.on('leave', ({code})=>{
     if(code) socket.leave(sanitizeCode(code));
+  });
+
+  // Clasificacion de intencion via IA (OpenAI) — NO modifica el estado de la partida.
+  // Solo le dice al cliente cual de las opciones ya disponibles conviene ejecutar; el
+  // cliente sigue disparando la accion real por el canal 'action' de siempre, que es
+  // donde vive toda la logica de reglas/dados/daño (el server sigue siendo la autoridad).
+  socket.on('classify_intent', async (payload, ack)=>{
+    if(typeof ack !== 'function') return;
+    if(!AI_DM_ENABLED){ ack({disabled:true}); return; }
+    try{
+      const { text, options, scene } = payload || {};
+      if(!text || !String(text).trim() || !Array.isArray(options) || !options.length){
+        ack({disabled:false, kind:'none'});
+        return;
+      }
+      const result = await classifyPlayerIntent(text, options, scene);
+      ack({ disabled:false, kind: result.kind, narration: result.narration });
+    } catch(err){
+      console.error('classify_intent error:', err.message);
+      ack({ disabled:false, error:true });
+    }
   });
 
   socket.on('disconnect', ()=>{});
