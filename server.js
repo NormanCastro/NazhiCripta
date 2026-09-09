@@ -73,24 +73,37 @@ async function classifyPlayerIntent(text, options, scene, charInfo){
   const system = 'Sos el clasificador de intenciones de un Dungeon Master de un juego de rol por turnos, en español. '+
     'Tu unico trabajo es, dado un mensaje libre de un jugador, elegir cual de las acciones disponibles representa mejor '+
     'su intencion, o "none" si el mensaje no corresponde a ninguna (por ejemplo, si es charla entre jugadores o no tiene '+
-    'relacion con la escena). Nunca inventes acciones fuera de la lista. Tene en cuenta el arma equipada y el inventario '+
-    'real del personaje: si el mensaje describe usar algo que el personaje no tiene (por ejemplo, disparar una flecha sin '+
-    'tener un arco, o usar una antorcha sin tenerla en el inventario), elegi "none" en vez de forzar una accion que no '+
-    'tiene sentido para ese personaje especifico — la narracion en ese caso deberia explicar brevemente por que no puede.'+
+    'relacion con la escena). Nunca inventes acciones fuera de la lista. Las etiquetas de las opciones son abreviadas y '+
+    'mecanicas (por ejemplo "Negociar o convencer (Carisma, CD 13)") — interpretalas siempre a la luz del titulo y la '+
+    'descripcion real de la escena actual: si el jugador describe con sus propias palabras lo mismo que una opcion '+
+    'representa en este contexto especifico (por ejemplo, "le hablo al guardia" o "trato de razonar con el" cuando la '+
+    'escena es negociar con un guardia), elegi esa opcion aunque las palabras exactas no coincidan con la etiqueta. '+
+    'Tene en cuenta el arma equipada y el inventario real del personaje: si el mensaje describe usar algo que el '+
+    'personaje no tiene (por ejemplo, disparar una flecha sin tener un arco, o usar una antorcha sin tenerla en el '+
+    'inventario), elegi "none" en vez de forzar una accion que no tiene sentido para ese personaje especifico — la '+
+    'narracion en ese caso deberia explicar brevemente por que no puede.'+
     (allowCustom ? ' Si el mensaje describe una accion de investigacion, examen o interaccion razonable y especifica con '+
      'la escena que no esta cubierta por ninguna de las opciones listadas (por ejemplo: revisar un detalle concreto, '+
      'buscar algo escondido, examinar de cerca, tantear el entorno), elegi "investigate_custom" en vez de "none" — es '+
      'una accion valida para creatividad del jugador, pero SOLO si tiene sentido fisico para el personaje, con lo que '+
      'realmente tiene equipado y en su inventario (nunca elijas esto para acciones magicas imposibles, absurdas, o que '+
      'el personaje no podria intentar con lo que tiene).' : '')+
+    ' La narracion NUNCA puede ser un mensaje generico tipo "no entendi" o "eso no es una opcion" — sos un DM en vivo, '+
+    'siempre reaccionas dentro de la ficcion a lo que el jugador describe, incluso cuando elegis "none" porque nada de '+
+    'la lista corresponde. Si el mensaje es una pregunta o algo que no mueve la escena (por ejemplo preguntar algo, '+
+    'comentar, o describir un gesto menor), respondé como el DM respondería en la mesa: dale la informacion o la '+
+    'reaccion que corresponda de forma breve, sin quitarle el turno ni obligarlo a elegir una accion mecanica todavia. '+
+    'Si el mensaje describe algo que el personaje no puede hacer (por falta de equipo, o porque es fisicamente '+
+    'imposible), la narracion tiene que explicar en personaje por que no funciona, no solo rechazarlo en seco.'+
     ' Respondes solo en el formato JSON pedido.';
   const user = 'Personaje:\n'+charDesc+
     '\n\nAcciones disponibles ahora mismo:\n'+optionsList+
     '\n\nEscena actual:\n'+sceneDesc+
     '\n\nMensaje del jugador: "'+String(text).slice(0,300)+'"\n\n'+
-    'Elegi el "kind" mas apropiado (o "none") y escribi una "narracion" corta de Dungeon Master '+
-    '(una sola oracion, en español, sin revelar si tiene exito o fracaso) reaccionando a como el jugador describe intentarlo. '+
-    'Si elegiste "none" porque el personaje no tiene los medios para hacer eso, que la narracion lo explique brevemente.';
+    'Elegi el "kind" mas apropiado (o "none") y escribi una "narracion" (una o dos oraciones, en español, sin revelar '+
+    'si tiene exito o fracaso) reaccionando de forma viva y en personaje a como el jugador describe intentarlo — '+
+    'esta narracion siempre se le muestra al jugador tal cual la escribas, incluso si elegiste "none", asi que tiene '+
+    'que sonar como una respuesta real de DM, nunca como un error del sistema.';
   const schema = {
     type:'object',
     properties:{

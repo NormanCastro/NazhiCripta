@@ -479,6 +479,18 @@ const INTENT_KEYWORDS = {
   use_torch: ['antorcha','uso mi antorcha','uso la antorcha','ilumino','prendo la antorcha','saco la antorcha'],
   use_rope: ['cuerda','uso mi cuerda','uso la cuerda','ato la cuerda','aseguro con la cuerda']
 };
+// palabras extra para "check"/"check_alt" segun el tipo de escena — la misma opcion mecanica
+// significa cosas muy distintas (negociar vs investigar vs detectar un peligro) segun el contexto.
+const CONTEXTUAL_CHECK_KEYWORDS = {
+  social: ['negociar','negocio','convencer','convenzo','hablar con','le hablo','hablarle','trato de convencerlo','trato de convencerla','persuadir','persuado','razonar con el','razono con ella','le pido amablemente','trato de negociar','dialogar','dialogo con el','le explico','pregunto'],
+  exploracion: ['reviso','investigo','examino','analizo','me fijo','miro de cerca','busco pistas','estudio el lugar'],
+  trampa: ['detecto','reviso con cuidado','me fijo si hay trampa','busco el mecanismo','tanteo el terreno','inspecciono con cuidado']
+};
+const CONTEXTUAL_CHECK_ALT_KEYWORDS = {
+  social: ['intimido','amenazo','lo intimido','la intimido','le hago frente','uso la fuerza para convencerlo','me pongo firme'],
+  exploracion: ['fuerzo el paso','uso la fuerza','empujo con fuerza','avanzo por la fuerza'],
+  trampa: ['analizo el mecanismo','estudio la trampa con calma','pienso antes de actuar']
+};
 const RATIONS_KEYWORDS = ['raciones','como mis raciones','como algo','comer','me como algo','saco mis raciones'];
 function normalizeText(s){
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -587,6 +599,15 @@ function tryMatchIntent(text){
         const btn = availableButtons.find(b=>b.dataset.kind===res.kind);
         if(btn){ applyIntentKind(res.kind, btn, norm, p, myChar, isCombat, hint, res.narration); return; }
       }
+      if(res && !res.disabled && !res.error){
+        // la IA respondio y decidio que nada de la lista aplica — mostramos SU reaccion en
+        // personaje (siempre la escribe), en vez del mensaje generico. No se ejecuta ninguna
+        // accion ni se consume el turno: el jugador puede seguir intentando otra cosa.
+        hint.textContent = res.narration ? '🎙️ '+res.narration : '🤔 Eso no parece algo que puedas hacer ahora mismo — probá otra cosa.';
+        hint.classList.remove('hidden');
+        return;
+      }
+      // la IA esta apagada, o fallo/dio error — recien ahi cae al interprete de palabras clave.
       runLocalKeywordMatch(norm, availableButtons, p, myChar, isCombat, hint);
     });
     return;
@@ -637,10 +658,17 @@ function applyIntentKind(kind, btn, norm, p, myChar, isCombat, hint, narration){
 }
 
 function runLocalKeywordMatch(norm, availableButtons, p, myChar, isCombat, hint){
+  const sc = p && p.currentScene;
   for(const btn of availableButtons){
     const kind = btn.dataset.kind;
-    const keywords = INTENT_KEYWORDS[kind];
+    let keywords = INTENT_KEYWORDS[kind];
     if(!keywords) continue;
+    // "check"/"check_alt" significan cosas distintas segun el tipo de escena (negociar vs
+    // investigar vs detectar peligro) — se suman las palabras propias de ese contexto.
+    if(sc && (kind==='check' || kind==='check_alt')){
+      const extra = kind==='check' ? CONTEXTUAL_CHECK_KEYWORDS[sc.type] : CONTEXTUAL_CHECK_ALT_KEYWORDS[sc.type];
+      if(extra) keywords = keywords.concat(extra);
+    }
     if(keywords.some(kw => norm.includes(normalizeText(kw)))){
       applyIntentKind(kind, btn, norm, p, myChar, isCombat, hint, null);
       return;
@@ -1043,8 +1071,10 @@ function renderAdventure(){
       addChoice('(Ya usaste algo para ayudarte aca)', ()=>{}, true, 'item_used');
     }
     const cdNote = sc.autoSucceed ? ' (¡ya sabes que hacer, exito garantizado!)' : '';
-    addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+Math.max(5,sc.dc-(sc.dcReduction||0))+')'+cdNote, ()=>sendAction('check'), false, 'check');
-    addChoice('Probar otro enfoque (mas dificil, CD '+Math.max(5,sc.dc+2-(sc.dcReduction||0))+')'+cdNote, ()=>sendAction('check_alt'), false, 'check_alt');
+    const CHECK_VERB = {social:'Negociar o convencer', exploracion:'Investigar con cuidado', trampa:'Detectar y evitar el peligro'}[sc.type] || 'Intentar';
+    const CHECK_ALT_VERB = {social:'Intimidar en vez de negociar', exploracion:'Forzar el paso en vez de investigar', trampa:'Analizar el mecanismo con calma'}[sc.type] || 'Probar otro enfoque';
+    addChoice(CHECK_VERB+' ('+ABIL_LABEL[sc.abil]+', CD '+Math.max(5,sc.dc-(sc.dcReduction||0))+')'+cdNote, ()=>sendAction('check'), false, 'check');
+    addChoice(CHECK_ALT_VERB+' (mas dificil, CD '+Math.max(5,sc.dc+2-(sc.dcReduction||0))+')'+cdNote, ()=>sendAction('check_alt'), false, 'check_alt');
     addChoice('Evitar la situacion', ()=>sendAction('skip'), false, 'skip');
   }
 }
