@@ -47,7 +47,7 @@ async function callOpenAIJson(messages, schema){
       model: OPENAI_MODEL,
       messages,
       temperature: 0.4,
-      max_tokens: 200,
+      max_completion_tokens: 500,
       response_format: { type:'json_schema', json_schema: { name:'dm_intent', strict:true, schema } }
     })
   });
