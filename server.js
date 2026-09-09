@@ -61,27 +61,36 @@ async function callOpenAIJson(messages, schema){
   return JSON.parse(content);
 }
 
-async function classifyPlayerIntent(text, options, scene){
+async function classifyPlayerIntent(text, options, scene, charInfo){
   const kinds = options.map(o=>o.kind).filter(Boolean);
   const allowCustom = !!(scene && scene.type && scene.type!=='combate' && scene.type!=='bifurcacion');
   const enumList = kinds.concat(allowCustom ? ['investigate_custom','none'] : ['none']);
   const optionsList = options.map(o=>'- "'+o.kind+'": '+o.label).join('\n');
   const sceneDesc = scene ? ('Tipo: '+scene.type+'\nTitulo: '+(scene.title||'-')+'\nDescripcion: '+(scene.text||'-')) : 'Sin escena activa.';
+  const charDesc = charInfo
+    ? ('Clase: '+(charInfo.cls||'-')+'\nArma equipada: '+(charInfo.weapon||'ninguna')+'\nInventario: '+((charInfo.inventory&&charInfo.inventory.length)?charInfo.inventory.join(', '):'vacio'))
+    : 'Sin datos del personaje.';
   const system = 'Sos el clasificador de intenciones de un Dungeon Master de un juego de rol por turnos, en español. '+
     'Tu unico trabajo es, dado un mensaje libre de un jugador, elegir cual de las acciones disponibles representa mejor '+
     'su intencion, o "none" si el mensaje no corresponde a ninguna (por ejemplo, si es charla entre jugadores o no tiene '+
-    'relacion con la escena). Nunca inventes acciones fuera de la lista.'+
+    'relacion con la escena). Nunca inventes acciones fuera de la lista. Tene en cuenta el arma equipada y el inventario '+
+    'real del personaje: si el mensaje describe usar algo que el personaje no tiene (por ejemplo, disparar una flecha sin '+
+    'tener un arco, o usar una antorcha sin tenerla en el inventario), elegi "none" en vez de forzar una accion que no '+
+    'tiene sentido para ese personaje especifico — la narracion en ese caso deberia explicar brevemente por que no puede.'+
     (allowCustom ? ' Si el mensaje describe una accion de investigacion, examen o interaccion razonable y especifica con '+
      'la escena que no esta cubierta por ninguna de las opciones listadas (por ejemplo: revisar un detalle concreto, '+
      'buscar algo escondido, examinar de cerca, tantear el entorno), elegi "investigate_custom" en vez de "none" — es '+
-     'una accion valida para creatividad del jugador, pero SOLO si tiene sentido fisico para el personaje en este '+
-     'contexto (nunca elijas esto para acciones magicas imposibles, absurdas, o que el personaje no podria intentar).' : '')+
+     'una accion valida para creatividad del jugador, pero SOLO si tiene sentido fisico para el personaje, con lo que '+
+     'realmente tiene equipado y en su inventario (nunca elijas esto para acciones magicas imposibles, absurdas, o que '+
+     'el personaje no podria intentar con lo que tiene).' : '')+
     ' Respondes solo en el formato JSON pedido.';
-  const user = 'Acciones disponibles ahora mismo:\n'+optionsList+
+  const user = 'Personaje:\n'+charDesc+
+    '\n\nAcciones disponibles ahora mismo:\n'+optionsList+
     '\n\nEscena actual:\n'+sceneDesc+
     '\n\nMensaje del jugador: "'+String(text).slice(0,300)+'"\n\n'+
     'Elegi el "kind" mas apropiado (o "none") y escribi una "narracion" corta de Dungeon Master '+
-    '(una sola oracion, en español, sin revelar si tiene exito o fracaso) reaccionando a como el jugador describe intentarlo.';
+    '(una sola oracion, en español, sin revelar si tiene exito o fracaso) reaccionando a como el jugador describe intentarlo. '+
+    'Si elegiste "none" porque el personaje no tiene los medios para hacer eso, que la narracion lo explique brevemente.';
   const schema = {
     type:'object',
     properties:{
@@ -89,6 +98,36 @@ async function classifyPlayerIntent(text, options, scene){
       narration:{ type:'string' }
     },
     required:['kind','narration'],
+    additionalProperties:false
+  };
+  return callOpenAIJson([
+    { role:'system', content: system },
+    { role:'user', content: user }
+  ], schema);
+}
+
+// Describe que logra un objeto del inventario en la escena actual. Igual que con la intencion:
+// la IA solo elige narracion + UN efecto de una lista cerrada (item/auto_succeed/flavor_only) —
+// nunca decide items concretos, cantidades, ni toca el estado del juego por su cuenta.
+async function describeItemEffect(itemName, scene){
+  const system = 'Sos un Dungeon Master de un juego de rol por turnos, en español. Un jugador va a usar un objeto de su '+
+    'inventario en la escena actual. Describi en una o dos oraciones, breves y concretas, que revela o logra ese objeto '+
+    'especificamente en esta escena (usa los detalles reales de la descripcion, no algo generico) — por ejemplo, si es '+
+    'una antorcha, que ilumina; si es una cuerda, como ayuda a cruzar o asegurar algo. Despues elegi el efecto de juego '+
+    'que mejor corresponda de la lista permitida: "item" si logicamente encontraria u obtendria algo de valor, '+
+    '"auto_succeed" si literalmente resuelve el obstaculo sin necesidad de mas tiradas, o "flavor_only" si es solo '+
+    'algo interesante o util sin cambiar el resultado mecanico (por ejemplo, espantar a una criatura pequeña, notar '+
+    'una pista). Nunca inventes un efecto fuera de esos tres.';
+  const user = 'Objeto usado: '+itemName+
+    '\n\nEscena actual:\nTipo: '+scene.type+'\nTitulo: '+(scene.title||'-')+'\nDescripcion: '+(scene.text||'-')+
+    '\n\nDescribi que pasa y elegi el efecto.';
+  const schema = {
+    type:'object',
+    properties:{
+      narration:{ type:'string' },
+      effect:{ type:'string', enum:['item','auto_succeed','flavor_only'] }
+    },
+    required:['narration','effect'],
     additionalProperties:false
   };
   return callOpenAIJson([
@@ -174,8 +213,31 @@ const HIDDEN_FINDS = {
   ]
 };
 const USABLE_SCENE_ITEMS = {
-  'Antorcha': { scenes:['exploracion','trampa'], bonus:3, desc:'ilumina cada rincon del lugar' },
-  'Cuerda (15m)': { scenes:['exploracion'], bonus:3, desc:'asegura el paso con la cuerda' }
+  'Antorcha': { scenes:['exploracion','trampa'] },
+  'Cuerda (15m)': { scenes:['exploracion'] }
+};
+// Respaldo sin IA: si no hay OPENAI_API_KEY configurada, se usa este pool fijo en vez de pedirle
+// una descripcion nueva a la IA cada vez.
+const ITEM_EFFECT_FALLBACK = {
+  'Antorcha': {
+    exploracion: [
+      {text:'La luz de tu antorcha espanta a una rata que estaba a punto de saltarte encima desde las sombras — sale corriendo antes de causar ningun problema.', effect:'flavor_only'},
+      {text:'Gracias a la antorcha notas una palanca oxidada escondida entre las piedras, algo que en la oscuridad hubieras pasado por alto.', effect:'item'},
+      {text:'La luz revela con total claridad el camino mas seguro — vas a resolver esto sin ningun riesgo real.', effect:'auto_succeed'}
+    ],
+    trampa: [
+      {text:'La antorcha ilumina el mecanismo de la trampa con total claridad — sabes exactamente donde no pisar.', effect:'auto_succeed'},
+      {text:'Con mas luz, notas que esta trampa ya fue activada antes y no representa ningun peligro real.', effect:'auto_succeed'},
+      {text:'La luz espanta a una criatura pequeña que rondaba junto a la trampa, antes de que pudiera dispararla.', effect:'flavor_only'}
+    ]
+  },
+  'Cuerda (15m)': {
+    exploracion: [
+      {text:'Atas la cuerda a un punto firme — con eso asegurado, el paso mas riesgoso deja de serlo.', effect:'auto_succeed'},
+      {text:'La cuerda te permite bajar hasta un rincon que de otra forma era imposible alcanzar, y encontras algo ahi.', effect:'item'},
+      {text:'La cuerda no cambia nada del obstaculo en si, pero te da un respaldo solido por si algo sale mal.', effect:'flavor_only'}
+    ]
+  }
 };
 const SCENE_TYPES = ['combate','social','exploracion','trampa','hallazgo','puerta'];
 const FORK_SCENES = [
@@ -617,6 +679,7 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
     const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
     const detailTxt = detail ? (' ('+String(detail).slice(0,140)+')') : '';
     pushLog(party, success?'ok':'sys', myChar.name+' investiga por su cuenta'+detailTxt+':'+flair+' d20('+roll+')'+fmtMod(modVal)+' -> '+(success?'¡Encuentra algo!':'No nota nada fuera de lo comun.'));
+    let resolvesScene = false;
     if(success){
       const pool = HIDDEN_FINDS[sc.type];
       const find = pool && pool.length ? pool[Math.floor(Math.random()*pool.length)] : null;
@@ -630,12 +693,17 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
         } else if(find.dcReduction){
           sc.dcReduction = (sc.dcReduction||0) + find.dcReduction;
         } else if(find.autoSolve && sc.type==='puerta'){
-          advanceTurn(party);
-          return { ok:true };
+          pushLog(party,'ok','La puerta cede del todo — no hace falta hacer nada mas para pasar.');
+          resolvesScene = true;
         }
       }
     }
-    advanceTurn(party);
+    // investigar es una accion de preparacion (igual que usar un objeto): salvo que haya
+    // resuelto la escena por completo (como abrir la puerta sola), la escena sigue activa
+    // y alguien todavia tiene que tomar la decision real (buscar llave, forzar, intentar, etc).
+    if(resolvesScene){
+      advanceTurn(party);
+    }
     return { ok:true };
   }
 
@@ -874,20 +942,8 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
     return { error:'Accion invalida.' };
   }
 
-  if(kind==='use_item'){
-    if(sc.type==='combate' || sc.type==='puerta' || sc.type==='hallazgo' || sc.type==='bifurcacion'){
-      return { error:'No es el momento de usar eso.' };
-    }
-    const def = USABLE_SCENE_ITEMS[itemName];
-    if(!def || !def.scenes.includes(sc.type)) return { error:'Eso no te sirve en esta situacion.' };
-    const idx = myChar.inventory.indexOf(itemName);
-    if(idx===-1) return { error:'No tenes ese objeto.' };
-    if(sc.dcReduction) return { error:'Ya usaste algo para ayudarte en esta escena.' };
-    myChar.inventory.splice(idx,1);
-    sc.dcReduction = def.bonus;
-    pushLog(party,'ok', myChar.name+' usa su '+itemName.toLowerCase()+': '+def.desc+' (la dificultad de la prueba baja '+def.bonus+' puntos).');
-    return { ok:true };
-  }
+  // el uso de objetos (Antorcha, Cuerda) ahora se maneja aparte, en el socket 'use_item'
+  // (necesita ser asincronico para poder consultarle a la IA que efecto corresponde).
 
   // social / exploracion / trampa
   if(kind==='check' || kind==='check_alt'){
@@ -899,12 +955,15 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
     const rk = rollKind(roll);
     const total = roll+modVal;
     let success;
-    if(rk==='fumble') success=false;
+    if(sc.autoSucceed) success=true;
+    else if(rk==='fumble') success=false;
     else if(rk==='crit') success=true;
     else success = total >= dc;
+    const guaranteedNote = sc.autoSucceed ? ' (ya sabias exactamente que hacer — exito garantizado)' : '';
+    sc.autoSucceed = false; // se consume, es un efecto de una sola vez
     const prefix = useAlt ? 'Con un enfoque distinto, ' : '';
     const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
-    pushLog(party, success?'ok':'bad', prefix+myChar.name+' tira '+abil+':'+flair+' d20('+roll+')'+fmtMod(modVal)+' = '+total+' vs CD '+dc+' -> '+(success?'Exito!':'Fallo'));
+    pushLog(party, success?'ok':'bad', prefix+myChar.name+' tira '+abil+':'+flair+' d20('+roll+')'+fmtMod(modVal)+' = '+total+' vs CD '+dc+guaranteedNote+' -> '+(success?'Exito!':'Fallo'));
     if(success){
       pushLog(party,'ok', sc.success);
       const item = Math.random()<0.4 ? ITEMS[Math.floor(Math.random()*ITEMS.length)] : null;
@@ -1021,6 +1080,62 @@ io.on('connection', (socket)=>{
     broadcastParty(code);
   });
 
+  // usar un objeto de inventario (Antorcha, Cuerda) — asincronico porque puede consultarle
+  // a la IA que revela/logra el objeto en esta escena especifica. Si la IA esta apagada, o
+  // falla, cae al pool de respaldo fijo (ITEM_EFFECT_FALLBACK) sin romper nada.
+  socket.on('use_item', async ({code, playerId, itemName}, ack)=>{
+    code = sanitizeCode(code);
+    const party = getParty(code);
+    const myChar = party.characters[playerId];
+    const sc = party.currentScene;
+    if(!myChar){ if(ack) ack({error:'No tenes personaje publicado.'}); return; }
+    if(!sc || sc.type==='combate' || sc.type==='puerta' || sc.type==='hallazgo' || sc.type==='bifurcacion'){
+      if(ack) ack({error:'No es el momento de usar eso.'}); return;
+    }
+    if(sc.groupMembers && !sc.groupMembers.includes(playerId)){ if(ack) ack({error:'No estas en esta escena.'}); return; }
+    if(myChar.hp<=0){ if(ack) ack({error:'Estas caido, no podes hacer eso ahora.'}); return; }
+    const def = USABLE_SCENE_ITEMS[itemName];
+    if(!def || !def.scenes.includes(sc.type)){ if(ack) ack({error:'Eso no te sirve en esta situacion.'}); return; }
+    const idx = myChar.inventory.indexOf(itemName);
+    if(idx===-1){ if(ack) ack({error:'No tenes ese objeto.'}); return; }
+    if(sc.itemUsedThisScene){ if(ack) ack({error:'Ya usaste algo para ayudarte en esta escena.'}); return; }
+
+    myChar.inventory.splice(idx,1);
+    sc.itemUsedThisScene = true;
+
+    let narration = null, effect = 'flavor_only';
+    if(AI_DM_ENABLED){
+      try{
+        const ai = await describeItemEffect(itemName, sc);
+        const allowed = ['item','auto_succeed','flavor_only'];
+        if(ai && ai.narration && allowed.includes(ai.effect)){ narration = ai.narration; effect = ai.effect; }
+      } catch(err){ console.error('use_item AI error:', err.message); }
+    }
+    if(!narration){
+      const pool = (ITEM_EFFECT_FALLBACK[itemName]||{})[sc.type] || [];
+      if(pool.length){
+        const pick = pool[Math.floor(Math.random()*pool.length)];
+        narration = pick.text; effect = pick.effect;
+      } else {
+        narration = 'No pasa nada en particular, pero no esta de mas tenerlo a mano.';
+        effect = 'flavor_only';
+      }
+    }
+
+    pushLog(party,'ok', myChar.name+' usa su '+itemName.toLowerCase()+'.');
+    pushLog(party,'ok', narration);
+    if(effect==='item'){
+      const item = ITEMS[Math.floor(Math.random()*ITEMS.length)];
+      const leveled = gainXpAndItem(party, playerId, 10, item);
+      pushLog(party,'ok', myChar.name+' consigue: '+item+'.');
+      if(leveled) pushLog(party,'ok', leveled);
+    } else if(effect==='auto_succeed'){
+      sc.autoSucceed = true;
+    }
+    broadcastParty(code);
+    if(ack) ack({ ok:true });
+  });
+
   socket.on('leave', ({code})=>{
     if(code) socket.leave(sanitizeCode(code));
   });
@@ -1033,12 +1148,23 @@ io.on('connection', (socket)=>{
     if(typeof ack !== 'function') return;
     if(!AI_DM_ENABLED){ ack({disabled:true}); return; }
     try{
-      const { text, options, scene } = payload || {};
+      const { code, playerId, text, options, scene } = payload || {};
       if(!text || !String(text).trim() || !Array.isArray(options) || !options.length){
         ack({disabled:false, kind:'none'});
         return;
       }
-      const result = await classifyPlayerIntent(text, options, scene);
+      // el arma/inventario se leen del estado real del servidor, nunca de lo que mande el
+      // cliente — asi nadie puede "mentirle" a la IA sobre que tiene equipado.
+      let charInfo = null;
+      if(code && playerId){
+        const party = getParty(sanitizeCode(code));
+        const c = party.characters[playerId];
+        if(c){
+          const cd = CLASSES[c.cls];
+          charInfo = { cls: c.cls, weapon: cd ? cd.weapon : null, inventory: c.inventory };
+        }
+      }
+      const result = await classifyPlayerIntent(text, options, scene, charInfo);
       ack({ disabled:false, kind: result.kind, narration: result.narration });
     } catch(err){
       console.error('classify_intent error:', err.message);

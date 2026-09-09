@@ -566,6 +566,8 @@ function tryMatchIntent(text){
   if(aiDmAvailable){
     const options = availableButtons.map(b=>({kind:b.dataset.kind, label:btnLabel(b)})).filter(o=>o.kind);
     socket.timeout(8000).emit('classify_intent', {
+      code: currentCode,
+      playerId,
       text,
       options,
       scene: { type: sc.type, title: sc.title, text: sc.text }
@@ -1030,25 +1032,30 @@ function renderAdventure(){
       'Antorcha': {scenes:['exploracion','trampa'], label:'Usar la antorcha para ver mejor'},
       'Cuerda (15m)': {scenes:['exploracion'], label:'Usar la cuerda para asegurar el paso'}
     };
-    if(!sc.dcReduction){
+    if(!sc.itemUsedThisScene){
       Object.entries(USABLE_ITEMS_CLIENT).forEach(([itemName, def])=>{
         if(def.scenes.includes(sc.type) && myChar.inventory.includes(itemName)){
           const kind = itemName==='Antorcha' ? 'use_torch' : 'use_rope';
           addChoice(def.label, ()=>sendUseItem(itemName), false, kind);
         }
       });
-    } else {
-      addChoice('(Ya usaste algo para ayudarte aca — la dificultad ya bajo)', ()=>{}, true, 'item_used');
+    } else if(!sc.autoSucceed){
+      addChoice('(Ya usaste algo para ayudarte aca)', ()=>{}, true, 'item_used');
     }
-    addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+Math.max(5,sc.dc-(sc.dcReduction||0))+')', ()=>sendAction('check'), false, 'check');
-    addChoice('Probar otro enfoque (mas dificil, CD '+Math.max(5,sc.dc+2-(sc.dcReduction||0))+')', ()=>sendAction('check_alt'), false, 'check_alt');
+    const cdNote = sc.autoSucceed ? ' (¡ya sabes que hacer, exito garantizado!)' : '';
+    addChoice('Intentar ('+ABIL_LABEL[sc.abil]+', CD '+Math.max(5,sc.dc-(sc.dcReduction||0))+')'+cdNote, ()=>sendAction('check'), false, 'check');
+    addChoice('Probar otro enfoque (mas dificil, CD '+Math.max(5,sc.dc+2-(sc.dcReduction||0))+')'+cdNote, ()=>sendAction('check_alt'), false, 'check_alt');
     addChoice('Evitar la situacion', ()=>sendAction('skip'), false, 'skip');
   }
 }
 
 function sendUseItem(itemName){
   if(!currentCode) return;
-  socket.emit('action', {code: currentCode, playerId, kind:'use_item', itemName});
+  // usa ack porque el servidor puede consultarle a la IA que efecto corresponde antes de responder
+  socket.timeout(10000).emit('use_item', {code: currentCode, playerId, itemName}, (err, res)=>{
+    if(err){ alert('El objeto tardo demasiado en responder, probá de nuevo.'); return; }
+    if(res && res.error){ alert(res.error); }
+  });
 }
 function sendEatRations(){
   if(!currentCode) return;
