@@ -46,7 +46,6 @@ async function callOpenAIJson(messages, schema){
     body: JSON.stringify({
       model: OPENAI_MODEL,
       messages,
-      temperature: 0.4,
       max_completion_tokens: 500,
       response_format: { type:'json_schema', json_schema: { name:'dm_intent', strict:true, schema } }
     })
