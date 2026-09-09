@@ -271,7 +271,7 @@ function computeRelevantMod(kind){
   const cd = CLASSES[myChar.cls];
   if(kind==='attack' || kind==='special') return mod(myChar.stats[cd.primary]);
   if(kind==='flee') return mod(myChar.stats.DES);
-  if(kind==='search_key') return mod(myChar.stats.INT);
+  if(kind==='search_key' || kind==='investigate_custom') return mod(myChar.stats.INT);
   if(kind==='force_door') return mod(myChar.stats.FUE);
   if(kind==='check' && sc) return mod(myChar.stats[sc.abil]);
   if(kind==='check_alt' && sc) return mod(myChar.stats[ALT_ABIL_BY_TYPE[sc.type]||sc.abil]);
@@ -334,9 +334,10 @@ document.getElementById('diceRollBtn').addEventListener('click', ()=>{
 
   if(pendingAction){
     const kind = pendingAction.kind;
+    const detail = pendingAction.detail;
     clearPendingAction();
     dicePanel.classList.add('hidden');
-    sendActionWithRoll(kind, effective);
+    sendActionWithRoll(kind, effective, detail);
   }
 });
 
@@ -576,6 +577,10 @@ function tryMatchIntent(text){
         return;
       }
       if(res && res.disabled){ aiDmAvailable = false; }
+      if(res && !res.disabled && !res.error && res.kind==='investigate_custom'){
+        investigateCustom(text, hint, res.narration);
+        return;
+      }
       if(res && !res.disabled && !res.error && res.kind && res.kind!=='none'){
         const btn = availableButtons.find(b=>b.dataset.kind===res.kind);
         if(btn){ applyIntentKind(res.kind, btn, norm, p, myChar, isCombat, hint, res.narration); return; }
@@ -585,6 +590,28 @@ function tryMatchIntent(text){
     return;
   }
   runLocalKeywordMatch(norm, availableButtons, p, myChar, isCombat, hint);
+}
+
+function investigateCustom(text, hint, narration){
+  // no hay boton para esto: es una accion creativa que solo la IA puede reconocer.
+  // dispara la tirada de siempre (INT), y el servidor decide si encuentra algo oculto.
+  pendingAction = { kind:'investigate_custom', adv:'normal', detail: text };
+  const relevantMod = computeRelevantMod('investigate_custom');
+  selDie = 20;
+  diceTypeGrid.querySelectorAll('button').forEach(x=>x.classList.remove('sel'));
+  diceTypeGrid.querySelectorAll('button')[5].classList.add('sel');
+  document.getElementById('diceQty').value = 1;
+  document.getElementById('diceQty').disabled = true;
+  document.getElementById('diceMod').value = relevantMod;
+  document.getElementById('diceMod').disabled = true;
+  diceFab.classList.add('glow');
+  dicePanel.classList.remove('hidden');
+  const prefix = narration ? '🎙️ '+narration+' ' : '';
+  document.getElementById('diceResult').innerHTML = '<p>'+prefix+'Tirá el D20 para ver si encontras algo (Inteligencia, modificador '+fmtMod(relevantMod)+').</p>';
+  const hintPrefix = narration ? '🎙️ '+narration+' ' : '';
+  hint.textContent = hintPrefix+'💡 Eso suena a algo que vale la pena investigar — el D20 esta brillando, tocalo para intentarlo.';
+  hint.classList.remove('hidden');
+  renderAdventure();
 }
 
 function applyIntentKind(kind, btn, norm, p, myChar, isCombat, hint, narration){
@@ -1162,9 +1189,9 @@ function sendAction(kind){
   socket.emit('action', {code: currentCode, playerId, kind});
 }
 
-function sendActionWithRoll(kind, clientRoll){
+function sendActionWithRoll(kind, clientRoll, detail){
   if(!currentCode) return;
-  socket.emit('action', {code: currentCode, playerId, kind, clientRoll});
+  socket.emit('action', {code: currentCode, playerId, kind, clientRoll, detail});
 }
 
 function renderUnifiedFeed(){

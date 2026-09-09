@@ -31,7 +31,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // de reglas (dados, dc, daño, xp) sigue siendo 100% el mismo de siempre, resuelto aca en
 // el servidor. La IA nunca inventa ni ejecuta mecanicas por su cuenta.
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5-mini';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.6-luna';
 const AI_DM_ENABLED = !!OPENAI_API_KEY;
 if(AI_DM_ENABLED) console.log('DM-IA activado (modelo: '+OPENAI_MODEL+')');
 else console.log('DM-IA desactivado (no hay OPENAI_API_KEY configurada) — se usa el interprete de palabras clave.');
@@ -63,13 +63,20 @@ async function callOpenAIJson(messages, schema){
 
 async function classifyPlayerIntent(text, options, scene){
   const kinds = options.map(o=>o.kind).filter(Boolean);
-  const enumList = kinds.concat(['none']);
+  const allowCustom = !!(scene && scene.type && scene.type!=='combate' && scene.type!=='bifurcacion');
+  const enumList = kinds.concat(allowCustom ? ['investigate_custom','none'] : ['none']);
   const optionsList = options.map(o=>'- "'+o.kind+'": '+o.label).join('\n');
   const sceneDesc = scene ? ('Tipo: '+scene.type+'\nTitulo: '+(scene.title||'-')+'\nDescripcion: '+(scene.text||'-')) : 'Sin escena activa.';
   const system = 'Sos el clasificador de intenciones de un Dungeon Master de un juego de rol por turnos, en español. '+
     'Tu unico trabajo es, dado un mensaje libre de un jugador, elegir cual de las acciones disponibles representa mejor '+
     'su intencion, o "none" si el mensaje no corresponde a ninguna (por ejemplo, si es charla entre jugadores o no tiene '+
-    'relacion con la escena). Nunca inventes acciones fuera de la lista. Respondes solo en el formato JSON pedido.';
+    'relacion con la escena). Nunca inventes acciones fuera de la lista.'+
+    (allowCustom ? ' Si el mensaje describe una accion de investigacion, examen o interaccion razonable y especifica con '+
+     'la escena que no esta cubierta por ninguna de las opciones listadas (por ejemplo: revisar un detalle concreto, '+
+     'buscar algo escondido, examinar de cerca, tantear el entorno), elegi "investigate_custom" en vez de "none" — es '+
+     'una accion valida para creatividad del jugador, pero SOLO si tiene sentido fisico para el personaje en este '+
+     'contexto (nunca elijas esto para acciones magicas imposibles, absurdas, o que el personaje no podria intentar).' : '')+
+    ' Respondes solo en el formato JSON pedido.';
   const user = 'Acciones disponibles ahora mismo:\n'+optionsList+
     '\n\nEscena actual:\n'+sceneDesc+
     '\n\nMensaje del jugador: "'+String(text).slice(0,300)+'"\n\n'+
@@ -143,6 +150,29 @@ const TRAP_SCENES = [
    success:'Abris el cofre con destreza, evitando la aguja, y encontras algo de valor.', fail:'La aguja te pincha; el veneno te resta algo de vida.'}
 ];
 const ITEMS = ['Pocion menor de curacion','Moneda de oro antigua','Gema pequeña','Pergamino ilegible','Daga ornamentada','Amuleto desgastado'];
+
+// Hallazgos ocultos: cosas que NO aparecen con las opciones normales, y que solo salen a la luz
+// si alguien decide investigar de forma libre (por chat, via la IA) y le sale bien la tirada.
+const HIDDEN_FINDS = {
+  puerta: [
+    {text:'Al pasar la mano con cuidado por el marco, sentis un mecanismo secundario disimulado entre la piedra — la puerta cede sola, sin necesidad de forzarla ni buscar ninguna llave.', autoSolve:true},
+    {text:'Notas simbolos grabados apenas visibles junto al marco: son el emblema partido de la Orden del Alba Eterna. Esta puerta era importante para ellos — y ahora sabes exactamente donde presionar para que ceda mas facil.', dcReduction:4}
+  ],
+  trampa: [
+    {text:'Examinando de cerca cada grieta del piso, identificas con precision donde esta el mecanismo — sabes exactamente que evitar.', dcReduction:5},
+    {text:'Entre los restos de la trampa encontras algo que a simple vista habia pasado desapercibido.', item:'random'}
+  ],
+  exploracion: [
+    {text:'Tu inspeccion minuciosa revela un compartimento oculto en la pared, disimulado entre las piedras.', item:'random'},
+    {text:'Encontras marcas de pasos recientes que no habias notado antes — alguien, o algo, paso por aca hace no mucho tiempo. Eso no te da nada en la mano, pero es un dato que vale la pena recordar.', lore:true}
+  ],
+  hallazgo: [
+    {text:'Revolviendo con mas cuidado de lo habitual, encontras algo mas ademas de lo que ya era obvio a simple vista.', item:'random'}
+  ],
+  social: [
+    {text:'Prestando atencion a los gestos y silencios de quien tenes enfrente, notas algo que decidio no decir en voz alta. No cambia la conversacion, pero es una pista que te llevas.', lore:true}
+  ]
+};
 const USABLE_SCENE_ITEMS = {
   'Antorcha': { scenes:['exploracion','trampa'], bonus:3, desc:'ilumina cada rincon del lugar' },
   'Cuerda (15m)': { scenes:['exploracion'], bonus:3, desc:'asegura el paso con la cuerda' }
@@ -560,7 +590,7 @@ function startTurnForPlayer(party, playerId){
   return { ok:true };
 }
 
-function doAction(party, playerId, kind, clientRoll, targetId, itemName){
+function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail){
   const myChar = party.characters[playerId];
   if(!myChar) return { error:'No tenes personaje publicado.' };
   const sc = party.currentScene;
@@ -575,6 +605,38 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName){
   }
   if(myChar.hp <= 0 && sc.type!=='combate'){
     return { error:'Estas caido — necesitas que te reanimen antes de poder actuar.' };
+  }
+
+  if(kind==='investigate_custom'){
+    if(sc.type==='combate' || sc.type==='bifurcacion') return { error:'No podes investigar de esa forma ahora mismo.' };
+    const roll = resolveRoll(clientRoll);
+    const rk = rollKind(roll);
+    const modVal = mod(myChar.stats.INT);
+    let success;
+    if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=13;
+    const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
+    const detailTxt = detail ? (' ('+String(detail).slice(0,140)+')') : '';
+    pushLog(party, success?'ok':'sys', myChar.name+' investiga por su cuenta'+detailTxt+':'+flair+' d20('+roll+')'+fmtMod(modVal)+' -> '+(success?'¡Encuentra algo!':'No nota nada fuera de lo comun.'));
+    if(success){
+      const pool = HIDDEN_FINDS[sc.type];
+      const find = pool && pool.length ? pool[Math.floor(Math.random()*pool.length)] : null;
+      if(find){
+        pushLog(party,'ok', find.text);
+        if(find.item==='random'){
+          const item = ITEMS[Math.floor(Math.random()*ITEMS.length)];
+          const leveled = gainXpAndItem(party, playerId, 10, item);
+          pushLog(party,'ok', myChar.name+' consigue: '+item+'.');
+          if(leveled) pushLog(party,'ok', leveled);
+        } else if(find.dcReduction){
+          sc.dcReduction = (sc.dcReduction||0) + find.dcReduction;
+        } else if(find.autoSolve && sc.type==='puerta'){
+          advanceTurn(party);
+          return { ok:true };
+        }
+      }
+    }
+    advanceTurn(party);
+    return { ok:true };
   }
 
   if(sc.type==='bifurcacion'){
@@ -769,10 +831,11 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName){
       const roll = resolveRoll(clientRoll);
       const rk = rollKind(roll);
       const modVal = mod(myChar.stats.INT);
+      const dcKey = Math.max(5, 13 - (sc.dcReduction||0));
       let success;
-      if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=13;
+      if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=dcKey;
       const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
-      pushLog(party, success?'ok':'bad', myChar.name+' busca la llave:'+flair+' d20('+roll+')'+fmtMod(modVal)+' -> '+(success?'La encuentra!':'No la encuentra.'));
+      pushLog(party, success?'ok':'bad', myChar.name+' busca la llave:'+flair+' d20('+roll+')'+fmtMod(modVal)+' vs CD '+dcKey+' -> '+(success?'La encuentra!':'No la encuentra.'));
       if(success){
         pushLog(party,'ok', 'Con la llave en mano, abris la puerta sin problemas.');
         const leveled = gainXpAndItem(party, playerId, 15, null);
@@ -786,10 +849,11 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName){
       const roll = resolveRoll(clientRoll);
       const rk = rollKind(roll);
       const modVal = mod(myChar.stats.FUE);
+      const dcDoor = Math.max(5, 14 - (sc.dcReduction||0));
       let success;
-      if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=14;
+      if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=dcDoor;
       const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
-      pushLog(party, success?'ok':'bad', myChar.name+' fuerza la puerta:'+flair+' d20('+roll+')'+fmtMod(modVal)+' -> '+(success?'Cede de un golpe!':'No cede.'));
+      pushLog(party, success?'ok':'bad', myChar.name+' fuerza la puerta:'+flair+' d20('+roll+')'+fmtMod(modVal)+' vs CD '+dcDoor+' -> '+(success?'Cede de un golpe!':'No cede.'));
       if(success){
         pushLog(party,'ok', 'La puerta revienta hacia adentro entre astillas.');
         const leveled = gainXpAndItem(party, playerId, 20, null);
@@ -912,10 +976,10 @@ io.on('connection', (socket)=>{
     broadcastParty(code);
   });
 
-  socket.on('action', ({code, playerId, kind, clientRoll, targetId, itemName})=>{
+  socket.on('action', ({code, playerId, kind, clientRoll, targetId, itemName, detail})=>{
     code = sanitizeCode(code);
     const party = getParty(code);
-    const result = doAction(party, playerId, kind, clientRoll, targetId, itemName);
+    const result = doAction(party, playerId, kind, clientRoll, targetId, itemName, detail);
     if(result.error){ socket.emit('action_error', result.error); return; }
     broadcastParty(code);
   });
