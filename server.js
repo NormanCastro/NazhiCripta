@@ -193,6 +193,7 @@ function blankParty(code){
     roomHistory: [],
     totalRooms: 0,
     fogRevealed: [],
+    plotSeen: [],
     updatedAt: Date.now()
   };
 }
@@ -257,6 +258,33 @@ function dmLine(category){
   const arr = DM_LINES[category];
   if(!arr || !arr.length) return null;
   return arr[Math.floor(Math.random()*arr.length)];
+}
+
+/* ===================== TRAMA DE LA CRIPTA ===================== */
+// Premisa explicita de la campaña, mostrada en la Guia y al arrancar la aventura.
+const CAMPAIGN_PLOT = {
+  title: 'La Cripta de Nazhi — El Sello Resquebrajado',
+  hook: 'Hace tres siglos, la Orden del Alba Eterna construyo esta cripta para encerrar al Rey Ceniciento, un tirano que goberno la region con fuego y ceniza hasta que fue derrotado — pero nunca destruido, solo sellado bajo tierra. La Orden monto guardia generacion tras generacion. Hace dos meses, sin explicacion, todo contacto con la cripta se corto. Ahora la tierra tiembla, la magia de la region se drena de a poco, y ustedes fueron enviados a averiguar que paso — y, si es posible, a reforzar el sello antes de que el Rey Ceniciento despierte del todo.'
+};
+// revelaciones de la trama, ligadas a salas especificas del recorrido (por indice de MAP_POINTS,
+// 0-based). Cada una se muestra una sola vez por fiesta, la primera vez que alguien llega ahi,
+// sin importar que tipo de escena haya salido sorteada en esa sala.
+const PLOT_MILESTONES = {
+  0: 'Frente a la entrada, los estandartes desteñidos de la Orden del Alba Eterna todavia cuelgan de sus astas. El emblema del sol partido en dos sigue ahi, pero el fuego de los pebeteros lleva mucho tiempo apagado.',
+  1: 'Las estatuas de guardianes que flanquean el vestibulo ya no son solo piedra — hay algo que se mueve dentro de la armadura vacia de al menos una de ellas. Sea lo que sea que paso aca, no dejo sobrevivientes, solo centinelas que ya no distinguen amigo de enemigo.',
+  3: 'La mesa del gran salon sigue servida: platos a medio comer, copas volcadas, sillas caidas hacia atras como si todos se hubieran levantado de golpe al mismo tiempo. Sea lo que interrumpio ese banquete, paso rapido y paso a todos a la vez.',
+  6: 'En esta camara ritual hay marcas de tiza y sal, un circulo a medio trazar, y quemaduras oscuras en el piso que no parecen accidentales. Alguien intento reforzar el sello aca — y algo salio mal a mitad del ritual.',
+  7: 'Los sarcofagos de los antiguos comandantes de la Orden descansan en fila. Uno de ellos esta abierto. Vacio. La tapa no fue forzada desde afuera: las marcas de arañazos estan del lado de adentro.',
+  8: 'El circulo sagrado, el corazon mismo del sello, ya no brilla dorado como deberia. Finas grietas de una luz oscura recorren la piedra bajo sus pies, y un frio antinatural sube desde el centro del circulo. El Rey Ceniciento no esta despierto todavia. Pero falta poco.',
+  9: 'Entre las celdas, una voz rasposa susurra algo desde la ultima jaula — todavia hay alguien vivo ahi adentro, encerrado por la propia Orden mucho antes de que todo esto empezara. Quizas la respuesta a lo que paso no este afuera, sino en lo que la Orden decidio esconder aca abajo.'
+};
+function pushPlotMilestone(party, mapPos){
+  party.plotSeen = party.plotSeen || [];
+  const text = PLOT_MILESTONES[mapPos];
+  if(!text || party.plotSeen.includes(mapPos)) return;
+  party.plotSeen.push(mapPos);
+  party.log.push({kind:'dm', text, ts: Date.now()});
+  if(party.log.length > 80) party.log.shift();
 }
 function pushDM(party, category){
   const line = dmLine(category);
@@ -506,6 +534,7 @@ function startTurnForPlayer(party, playerId){
   const scene = buildEncounterScene(party, presentIds, {allowFork:true, guardBias});
 
   pushLog(party, 'sys', myChar.name+' explora una nueva sala...');
+  pushPlotMilestone(party, nextMapPos);
   pushDM(party, scene.type);
   pushItemSuggestion(party, scene, presentIds);
   party.status = scene.type==='combate' ? 'combat' : 'event';

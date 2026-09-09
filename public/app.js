@@ -564,11 +564,17 @@ function tryMatchIntent(text){
 
   if(aiDmAvailable){
     const options = availableButtons.map(b=>({kind:b.dataset.kind, label:btnLabel(b)})).filter(o=>o.kind);
-    socket.emit('classify_intent', {
+    socket.timeout(8000).emit('classify_intent', {
       text,
       options,
       scene: { type: sc.type, title: sc.title, text: sc.text }
-    }, (res)=>{
+    }, (err, res)=>{
+      if(err){
+        // la IA no respondio a tiempo (red lenta, servidor caido, etc.) — no se desactiva
+        // permanentemente, solo se resuelve este mensaje con el interprete de palabras clave.
+        runLocalKeywordMatch(norm, availableButtons, p, myChar, isCombat, hint);
+        return;
+      }
       if(res && res.disabled){ aiDmAvailable = false; }
       if(res && !res.disabled && !res.error && res.kind && res.kind!=='none'){
         const btn = availableButtons.find(b=>b.dataset.kind===res.kind);

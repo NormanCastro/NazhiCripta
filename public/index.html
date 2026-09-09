@@ -51,6 +51,14 @@
     <div class="wrap">
   <!-- ===================== GUÍA ===================== -->
   <section id="tab-guia" class="tab-content">
+    <div class="panel" id="plotPanel">
+      <h2>La historia</h2>
+      <h3 style="margin-top:10px;">La Cripta de Nazhi — El Sello Resquebrajado</h3>
+      <p>Hace tres siglos, la Orden del Alba Eterna construyo esta cripta para encerrar al Rey Ceniciento, un tirano que goberno la region con fuego y ceniza hasta que fue derrotado — pero nunca destruido, solo sellado bajo tierra. La Orden monto guardia generacion tras generacion.</p>
+      <p>Hace dos meses, sin explicacion, todo contacto con la cripta se corto. Ahora la tierra tiembla, la magia de la region se drena de a poco, y ustedes fueron enviados a averiguar que paso — y, si es posible, a reforzar el sello antes de que el Rey Ceniciento despierte del todo.</p>
+      <p class="small-note">A medida que avancen por la cripta, van a ir descubriendo que le paso realmente a la Orden — presten atencion a la bitacora.</p>
+    </div>
+
     <div class="panel">
       <h2>Como se juega</h2>
       <ol class="guide-list">
@@ -59,9 +67,9 @@
         <li><strong>3. Tiradas.</strong> Cuando tu accion requiere una tirada, el dado D20 flotante se ilumina — tocalo y tira vos mismo. El resultado se suma al modificador correspondiente contra una Dificultad (CD) o la Clase de Armadura del rival.</li>
         <li><strong>4. Critico y pifia natural.</strong> Si el D20 sale 20, es un exito automatico (y en combate, daño duplicado) sin importar el modificador. Si sale 1, es un fallo automatico, tambien sin importar el modificador. Son los momentos mas emocionantes del juego.</li>
         <li><strong>5. Iniciativa.</strong> Al entrar en combate, vos y el enemigo tiran d20 (vos con tu modificador de Destreza). Quien saca mas alto actua primero.</li>
-        <li><strong>6. Combate.</strong> Ademas de Atacar y tu habilidad especial, podes Defenderte (reducis el daño que recibis) o beber una Pocion si tenes una en el inventario. 0 de vida = caes, pero te recuperas tras un descanso.</li>
+        <li><strong>6. Combate.</strong> Ademas de Atacar y tu habilidad especial, podes Defenderte (reducis el daño que recibis) o beber una Pocion si tenes una en el inventario. Al llegar a 0 de vida caes inconsciente y no podes actuar hasta que un aliado te reanime con una pocion o con curacion.</li>
         <li><strong>7. Tu hoja de personaje.</strong> Desde la pestaña Aventura, el boton "Mi hoja de personaje" te muestra tus estadisticas, vida e inventario actualizados en cualquier momento.</li>
-        <li><strong>8. El mapa.</strong> Cada jugador tiene su propio marcador que avanza sobre el mapa a medida que explora, y la niebla se despeja donde la fiesta ya paso.</li>
+        <li><strong>8. El mapa.</strong> La fiesta se mueve junta por la cripta, sala por sala (salvo que una bifurcacion los separe por un rato), y la niebla se despeja donde ya pasaron.</li>
         <li><strong>9. Fiesta.</strong> Entra a un codigo de sala junto a tus amigos: todos ven el mismo mapa, la misma bitacora y el mismo chat, en vivo. Tu posicion se guarda sola, asi que podes cerrar y volver a entrar sin perder nada.</li>
         <li><strong>10. Progresion.</strong> Ganar encuentros da experiencia; al subir de nivel ganas mas vida y te curas del todo.</li>
       </ol>
@@ -186,6 +194,7 @@
           </div>
 
           <div id="adventureIntro">
+            <p class="small-note">Buscan al Rey Ceniciento sellado bajo la cripta, y que fue de la Orden del Alba Eterna que la custodiaba. Cada sala puede revelar una pieza mas de esa historia.</p>
             <p id="partyTurnInfo">Explora salas al azar: combates, encuentros sociales, trampas y hallazgos.</p>
             <button class="action" id="startAdvBtn">Empezar mi turno</button>
           </div>
