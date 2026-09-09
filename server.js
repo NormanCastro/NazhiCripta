@@ -136,6 +136,61 @@ async function describeItemEffect(itemName, scene){
   ], schema);
 }
 
+// Genera la narracion (titulo + texto, y para pruebas de habilidad tambien los textos de
+// exito/fracaso) de una escena nueva, con contexto real de la campaña y de lo que ya paso —
+// para que ninguna escena se sienta repetida o generica. Los datos MECANICOS (que tipo de
+// prueba es, la CD, las estadisticas del enemigo) siempre se deciden aparte, en el servidor,
+// nunca por la IA — esto solo escribe el texto.
+async function generateSceneNarration(sceneType, ctx){
+  const system = 'Sos un Dungeon Master creativo narrando una cripta de fantasia medieval en español, para un grupo de '+
+    'aventureros. Vas a describir una escena NUEVA que la fiesta se encuentra, evitando repetir frases, imagenes o '+
+    'situaciones que ya se usaron antes en esta misma partida (revisa los eventos recientes que te paso). Se breve pero '+
+    'evocador: 2 o 3 oraciones para la descripcion principal. Nunca decidas resultados de dados, daño, ni cambies ninguna '+
+    'regla del juego — vos solo escribis narracion, todo lo mecanico ya esta decidido de antemano. Respondes unicamente '+
+    'en el formato JSON pedido, sin texto fuera de los campos.';
+  let typeHint;
+  if(sceneType==='combate'){
+    typeHint = 'Es un encuentro de combate contra: '+ctx.enemyName+'. El titulo deberia transmitir la emboscada o el peligro, '+
+      'y el texto describir brevemente como aparece este enemigo especifico en esta sala.';
+  } else if(sceneType==='hallazgo'){
+    typeHint = 'Es una sala segura (sin peligro) donde algo de valor esta escondido o brillando entre los escombros — '+
+      'describi que se ve, de forma intrigante, sin decir todavia que es exactamente.';
+  } else if(sceneType==='puerta'){
+    typeHint = 'Es una puerta cerrada que bloquea completamente el paso. Describi la puerta en si (de que esta hecha, que '+
+      'marcas o detalles tiene) de forma que deje claro que hay que resolverla de alguna manera para seguir.';
+  } else {
+    typeHint = 'Es una situacion de tipo "'+sceneType+'" que un personaje va a intentar resolver con una prueba de '+
+      ctx.abil+' (la dificultad ya esta decidida, no la menciones). Ademas del titulo y el texto principal, escribi un '+
+      '"success" (que pasa concretamente si a alguien le sale bien) y un "fail" (que pasa si le sale mal) — ninguno de '+
+      'los dos debe mencionar numeros, dados, ni terminologia de juego.';
+  }
+  const user = 'Contexto general de la campaña: '+ctx.plotHook+
+    '\n\nSala actual de la cripta: '+(ctx.roomName||'una parte sin nombre de la cripta')+
+    '\n\nUltimos eventos de esta partida (para no repetir ni contradecir nada, ignoralos si dicen "recien empezando"):\n'+(ctx.recentLog||'(recien estan empezando la aventura)')+
+    '\n\n'+typeHint+
+    '\n\nGenera "title", "text", y tambien "success" y "fail" (si el tipo de escena no los necesita, poné ahi cualquier frase corta neutra, no los dejes vacios).';
+  const schema = {
+    type:'object',
+    properties:{
+      title:{ type:'string' },
+      text:{ type:'string' },
+      success:{ type:'string' },
+      fail:{ type:'string' }
+    },
+    required:['title','text','success','fail'],
+    additionalProperties:false
+  };
+  return callOpenAIJson([
+    { role:'system', content: system },
+    { role:'user', content: user }
+  ], schema);
+}
+
+function buildRecentLogSummary(party){
+  const lines = (party.log||[]).slice(-4).map(l=>l.text).filter(Boolean);
+  return lines.join(' | ');
+}
+
 /* ===================== DATOS DE JUEGO (autoritativos, en el servidor) ===================== */
 
 const CLASSES = {
@@ -358,6 +413,9 @@ const CAMPAIGN_PLOT = {
   title: 'La Cripta de Nazhi — El Sello Resquebrajado',
   hook: 'Hace tres siglos, la Orden del Alba Eterna construyo esta cripta para encerrar al Rey Ceniciento, un tirano que goberno la region con fuego y ceniza hasta que fue derrotado — pero nunca destruido, solo sellado bajo tierra. La Orden monto guardia generacion tras generacion. Hace dos meses, sin explicacion, todo contacto con la cripta se corto. Ahora la tierra tiembla, la magia de la region se drena de a poco, y ustedes fueron enviados a averiguar que paso — y, si es posible, a reforzar el sello antes de que el Rey Ceniciento despierte del todo.'
 };
+// nombres de sala en el mismo orden que MAP_POINTS del cliente (public/app.js) — se usan para
+// darle a la IA contexto de en que parte de la cripta esta pasando cada escena.
+const ROOM_NAMES = ['Entrada de la Cueva','Vestibulo de Guardianes','Corredor Olvidado','Gran Salon','Caverna del Pantano','Cruce del Puente','Camara del Ritual','Sala de los Sarcofagos','Circulo Sagrado','Celdas'];
 // revelaciones de la trama, ligadas a salas especificas del recorrido (por indice de MAP_POINTS,
 // 0-based). Cada una se muestra una sola vez por fiesta, la primera vez que alguien llega ahi,
 // sin importar que tipo de escena haya salido sorteada en esa sala.
@@ -583,6 +641,37 @@ function buildEncounterScene(party, memberIds, opts){
   return scene;
 }
 
+// Igual que buildEncounterScene (misma logica mecanica, sin tocar nada de eso), pero si la IA
+// esta activada le pide que reescriba la narracion (titulo/texto/exito/fracaso) con contexto
+// real de la campaña y de lo que ya paso, para que cada escena se sienta unica. Si la IA esta
+// apagada, falla, o el tipo de escena es una bifurcacion (todavia no lo cubrimos), se queda
+// tal cual con el texto fijo de siempre — nunca rompe nada.
+async function buildEncounterSceneAI(party, memberIds, opts){
+  const scene = buildEncounterScene(party, memberIds, opts);
+  if(!AI_DM_ENABLED || scene.type==='bifurcacion') return scene;
+  try{
+    const ctx = {
+      plotHook: CAMPAIGN_PLOT.hook,
+      roomName: opts.roomName || '',
+      recentLog: opts.recentLog || '',
+      enemyName: scene.enemy ? scene.enemy.name : null,
+      abil: scene.abil
+    };
+    const ai = await generateSceneNarration(scene.type, ctx);
+    if(ai && ai.title && ai.text){
+      scene.title = ai.title;
+      scene.text = ai.text;
+      if((scene.type==='social' || scene.type==='exploracion' || scene.type==='trampa')){
+        if(ai.success) scene.success = ai.success;
+        if(ai.fail) scene.fail = ai.fail;
+      }
+    }
+  } catch(err){
+    console.error('buildEncounterSceneAI error:', err.message);
+  }
+  return scene;
+}
+
 function startForkGroupScene(party){
   const next = party.forkQueue[0];
   const scene = buildEncounterScene(party, next.members, {});
@@ -604,7 +693,7 @@ function getEffectiveTurnLeader(party){
   return q.length ? q[0] : null;
 }
 
-function startTurnForPlayer(party, playerId){
+async function startTurnForPlayer(party, playerId){
   if(party.status !== 'idle' || party.currentScene){
     return { error: 'Ya hay una escena en curso en esta fiesta.' };
   }
@@ -623,7 +712,11 @@ function startTurnForPlayer(party, playerId){
   const guardBias = GUARD_ROOM_INDEXES.includes(nextMapPos) && Math.random() < 0.6;
   const presentIds = Object.keys(party.characters); // la fiesta se mueve junta: todos estan presentes
 
-  const scene = buildEncounterScene(party, presentIds, {allowFork:true, guardBias});
+  const scene = await buildEncounterSceneAI(party, presentIds, {
+    allowFork:true, guardBias,
+    roomName: ROOM_NAMES[nextMapPos] || '',
+    recentLog: buildRecentLogSummary(party)
+  });
 
   pushLog(party, 'sys', myChar.name+' explora una nueva sala...');
   pushPlotMilestone(party, nextMapPos);
@@ -1027,10 +1120,10 @@ io.on('connection', (socket)=>{
     broadcastParty(code);
   });
 
-  socket.on('start_turn', ({code, playerId})=>{
+  socket.on('start_turn', async ({code, playerId})=>{
     code = sanitizeCode(code);
     const party = getParty(code);
-    const result = startTurnForPlayer(party, playerId);
+    const result = await startTurnForPlayer(party, playerId);
     if(result.error){ socket.emit('action_error', result.error); return; }
     broadcastParty(code);
   });
@@ -1165,6 +1258,7 @@ io.on('connection', (socket)=>{
         }
       }
       const result = await classifyPlayerIntent(text, options, scene, charInfo);
+      console.log('[classify_intent] texto="'+String(text).slice(0,80)+'" escena='+(scene&&scene.type)+' opciones=['+options.map(o=>o.kind).join(',')+'] arma='+(charInfo&&charInfo.weapon)+' -> kind="'+result.kind+'" narracion="'+String(result.narration||'').slice(0,80)+'"');
       ack({ disabled:false, kind: result.kind, narration: result.narration });
     } catch(err){
       console.error('classify_intent error:', err.message);

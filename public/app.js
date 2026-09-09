@@ -468,7 +468,7 @@ const INTENT_KEYWORDS = {
   defend: ['defender','defenderme','defiendo','cubrirme','cubro','esconderme','escondo','protegerme','proteger','me cubro','me pongo a cubierto','me resguardo','bloqueo','levanto el escudo','me quedo atras cubriendome'],
   usepotion: ['pocion','poción','curarme','curar','beber','tomar pocion','bebo la pocion','me curo','tomo mi pocion'],
   flee: ['huir','huyo','escapar','escapo','correr','corro','irme','retirarme','retirada','me voy','salgo corriendo','abandono la pelea','no quiero pelear','mejor me retiro'],
-  collect: ['recoger','recojo','agarrar','agarro','tomar','revisar','busco algo','lo agarro','voy a buscarlo','me lo llevo','junto lo que brilla'],
+  collect: ['recoger','recojo','agarrar','agarro','tomar','revisar','busco algo','lo agarro','voy a buscarlo','me lo llevo','junto lo que brilla','analizo','inspecciono','analizar','inspeccionar','examino','examinar','me acerco a ver','miro de cerca','me fijo que es','reviso que brilla'],
   search_key: ['buscar llave','busco la llave','llave','busco por una llave','reviso si hay una llave','trato de encontrar la llave'],
   force_door: ['forzar','romper','empujar','forzarla','la empujo','le doy una patada','trato de romperla','la fuerzo con el hombro'],
   check: ['intentar','probar','investigar','intento','pruebo','investigo','reviso','me fijo','presto atencion','analizo','voy a analizar','quiero investigar','me acerco a mirar','examino el lugar'],
