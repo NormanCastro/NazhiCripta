@@ -67,7 +67,7 @@ async function classifyPlayerIntent(text, options, scene, charInfo){
   const optionsList = options.map(o=>'- "'+o.kind+'": '+o.label).join('\n');
   const sceneDesc = scene ? ('Tipo: '+scene.type+'\nTitulo: '+(scene.title||'-')+'\nDescripcion: '+(scene.text||'-')) : 'Sin escena activa.';
   const charDesc = charInfo
-    ? ('Clase: '+(charInfo.cls||'-')+'\nArma equipada: '+(charInfo.weapon||'ninguna')+'\nInventario: '+((charInfo.inventory&&charInfo.inventory.length)?charInfo.inventory.join(', '):'vacio'))
+    ? ('Clase: '+(charInfo.cls||'-')+'\nArma equipada: '+(charInfo.weapon||'ninguna')+'\nInventario: '+((charInfo.inventory&&charInfo.inventory.length)?charInfo.inventory.join(', '):'vacio')+'\nPercepcion pasiva: '+(charInfo.passivePerception||10))
     : 'Sin datos del personaje.';
   const system = 'Sos el clasificador de intenciones de un Dungeon Master de un juego de rol por turnos, en español. '+
     'Tu unico trabajo es, dado un mensaje libre de un jugador, elegir cual de las acciones disponibles representa mejor '+
@@ -84,9 +84,7 @@ async function classifyPlayerIntent(text, options, scene, charInfo){
     (allowCustom ? ' Si el mensaje describe una accion de investigacion, examen o interaccion razonable y especifica con '+
      'la escena que no esta cubierta por ninguna de las opciones listadas (por ejemplo: revisar un detalle concreto, '+
      'buscar algo escondido, examinar de cerca, tantear el entorno), elegi "investigate_custom" en vez de "none" — es '+
-     'una accion valida para creatividad del jugador, pero SOLO si tiene sentido fisico para el personaje, con lo que '+
-     'realmente tiene equipado y en su inventario (nunca elijas esto para acciones magicas imposibles, absurdas, o que '+
-     'el personaje no podria intentar con lo que tiene).' : '')+
+     'una accion valida para creatividad del jugador. Cuando elijas investigate_custom, identifica la skill D&D mas apropiada de las 18 skills y una categoria de dificultad: very_easy, easy, medium, hard, very_hard o nearly_impossible. No decidas exito o fracaso. SOLO si tiene sentido fisico para el personaje, con lo que realmente tiene equipado y en su inventario.' : '')+
     ' La narracion NUNCA puede ser un mensaje generico tipo "no entendi" o "eso no es una opcion" — sos un DM en vivo, '+
     'siempre reaccionas dentro de la ficcion a lo que el jugador describe, incluso cuando elegis "none" porque nada de '+
     'la lista corresponde. Si el mensaje es una pregunta o algo que no mueve la escena (por ejemplo preguntar algo, '+
@@ -107,9 +105,11 @@ async function classifyPlayerIntent(text, options, scene, charInfo){
     type:'object',
     properties:{
       kind:{ type:'string', enum: enumList },
-      narration:{ type:'string' }
+      narration:{ type:'string' },
+      skill:{ type:'string', enum:Object.keys(SKILLS).concat(['none']) },
+      difficulty:{ type:'string', enum:['very_easy','easy','medium','hard','very_hard','nearly_impossible','none'] }
     },
-    required:['kind','narration'],
+    required:['kind','narration','skill','difficulty'],
     additionalProperties:false
   };
   return callOpenAIJson([
@@ -218,6 +218,42 @@ const CLASSES = {
   monje:{ hitDie:8, primary:'DES', specialName:'Golpe Certero', weapon:'Golpes sin arma', weaponDie:6 }
 };
 
+const PROF_BONUS_BY_LEVEL = lvl => 2 + Math.floor((Math.max(1,lvl)-1)/4);
+const SKILLS = {
+  acrobatics:{name:'Acrobacias',abil:'DES'}, animalHandling:{name:'Trato con animales',abil:'SAB'}, arcana:{name:'Arcana',abil:'INT'},
+  athletics:{name:'Atletismo',abil:'FUE'}, deception:{name:'Engaño',abil:'CAR'}, history:{name:'Historia',abil:'INT'},
+  insight:{name:'Perspicacia',abil:'SAB'}, intimidation:{name:'Intimidación',abil:'CAR'}, investigation:{name:'Investigación',abil:'INT'},
+  medicine:{name:'Medicina',abil:'SAB'}, nature:{name:'Naturaleza',abil:'INT'}, perception:{name:'Percepción',abil:'SAB'},
+  performance:{name:'Interpretación',abil:'CAR'}, persuasion:{name:'Persuasión',abil:'CAR'}, religion:{name:'Religión',abil:'INT'},
+  sleightOfHand:{name:'Juego de manos',abil:'DES'}, stealth:{name:'Sigilo',abil:'DES'}, survival:{name:'Supervivencia',abil:'SAB'}
+};
+const CLASS_SKILLS = {
+  guerrero:['athletics','intimidation'], mago:['arcana','investigation'], picaro:['stealth','sleightOfHand','investigation','perception'],
+  clerigo:['medicine','religion'], barbaro:['athletics','survival'], explorador:['perception','survival','stealth'],
+  paladin:['athletics','persuasion'], bardo:['performance','persuasion','deception'], druida:['nature','perception'], monje:['acrobatics','insight']
+};
+const DIFFICULTY_DC = {very_easy:5,easy:10,medium:15,hard:20,very_hard:25,nearly_impossible:30};
+function skillBonus(c, skill){
+  const def=SKILLS[skill]; if(!def) return 0;
+  return mod(c.stats[def.abil]) + ((CLASS_SKILLS[c.cls]||[]).includes(skill) ? proficiencyBonus(c) : 0);
+}
+function passivePerception(c){ return 10 + skillBonus(c,'perception'); }
+
+const XP_THRESHOLDS = [0,300,900,2700,6500,14000,23000,34000,48000,64000,85000,100000,120000,140000,165000,195000,225000,265000,305000,355000];
+function proficiencyBonus(c){ return c.proficiencyBonus || PROF_BONUS_BY_LEVEL(c.level||1); }
+function attackBonus(c, cd){ return mod(c.stats[cd.primary]) + proficiencyBonus(c); }
+function ensureCharacterRules(c){
+  if(!c) return c;
+  c.proficiencyBonus = PROF_BONUS_BY_LEVEL(c.level||1);
+  c.initiative = mod(c.stats.DES);
+  c.speed = c.speed || ((c.race==='enano'||c.race==='mediano')?25:30);
+  c.temporaryHp = c.temporaryHp || 0;
+  c.deathSaves = c.deathSaves || {successes:0,failures:0};
+  c.conditions = c.conditions || [];
+  c.hitDice = c.hitDice || {die:CLASSES[c.cls].hitDie,total:c.level||1,remaining:c.level||1};
+  c.passivePerception = passivePerception(c);
+  return c;
+}
 const ALT_ABIL_BY_TYPE = { social:'FUE', exploracion:'FUE', trampa:'INT' };
 const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰', puerta:'🚪' };
 const MAP_POINTS_LEN = 10; // debe coincidir con MAP_POINTS.length en public/app.js
@@ -422,8 +458,8 @@ function dmLine(category){
 /* ===================== TRAMA DE LA CRIPTA ===================== */
 // Premisa explicita de la campaña, mostrada en la Guia y al arrancar la aventura.
 const CAMPAIGN_PLOT = {
-  title: 'La Cripta de Nazhi — El Sello Resquebrajado',
-  hook: 'Hace tres siglos, la Orden del Alba Eterna construyo esta cripta para encerrar al Rey Ceniciento, un tirano que goberno la region con fuego y ceniza hasta que fue derrotado — pero nunca destruido, solo sellado bajo tierra. La Orden monto guardia generacion tras generacion. Hace dos meses, sin explicacion, todo contacto con la cripta se corto. Ahora la tierra tiembla, la magia de la region se drena de a poco, y ustedes fueron enviados a averiguar que paso — y, si es posible, a reforzar el sello antes de que el Rey Ceniciento despierte del todo.'
+  title: 'Las Campanas de Valdora — El Último Vigía',
+  hook: 'La aventura comienza en la plaza de Valdora durante el mercado de la mañana. La campana de la torre suena sola y la alcaldesa Mara Venn reúne a los aventureros: tres vecinos han desaparecido cerca de las colinas y el último vigía de una antigua cripta, Ser Aldren, no regresó. Antes de partir dejó un medallón de la Orden del Alba y una frase: «si las campanas suenan sin manos, buscad lo que la Orden quiso olvidar». El grupo debe seguir sus pistas hasta la Cripta del Alba, descubrir qué ocurrió con Aldren y encontrar aquello que alguien está intentando sacar de la dungeon.'
 };
 // nombres de sala en el mismo orden que MAP_POINTS del cliente (public/app.js) — se usan para
 // darle a la IA contexto de en que parte de la cripta esta pasando cada escena.
@@ -438,7 +474,7 @@ const PLOT_MILESTONES = {
   6: 'En esta camara ritual hay marcas de tiza y sal, un circulo a medio trazar, y quemaduras oscuras en el piso que no parecen accidentales. Alguien intento reforzar el sello aca — y algo salio mal a mitad del ritual.',
   7: 'Los sarcofagos de los antiguos comandantes de la Orden descansan en fila. Uno de ellos esta abierto. Vacio. La tapa no fue forzada desde afuera: las marcas de arañazos estan del lado de adentro.',
   8: 'El circulo sagrado, el corazon mismo del sello, ya no brilla dorado como deberia. Finas grietas de una luz oscura recorren la piedra bajo sus pies, y un frio antinatural sube desde el centro del circulo. El Rey Ceniciento no esta despierto todavia. Pero falta poco.',
-  9: 'Entre las celdas, una voz rasposa susurra algo desde la ultima jaula — todavia hay alguien vivo ahi adentro, encerrado por la propia Orden mucho antes de que todo esto empezara. Quizas la respuesta a lo que paso no este afuera, sino en lo que la Orden decidio esconder aca abajo.'
+  9: 'En la última celda encuentran a Ser Aldren, herido pero vivo. Bajo una losa señala un cilindro de hierro: dentro está el Libro de Vigilia y el fragmento del Sello Solar que todos buscaban. El libro revela la verdad: alguien de Valdora rompió deliberadamente el sello para extraer poder de la cripta. Han encontrado a Aldren, la prueba y el objeto antes de que pudieran llevárselo. La aventura termina aquí, en lo profundo de la dungeon, con una nueva pregunta para una futura campaña: ¿quién en Valdora traicionó a la Orden?'
 };
 function pushPlotMilestone(party, mapPos){
   party.plotSeen = party.plotSeen || [];
@@ -492,18 +528,22 @@ function activePlayerId(party){
 function gainXpAndItem(party, playerId, amount, item){
   const c = party.characters[playerId];
   if(!c) return '';
+  ensureCharacterRules(c);
   c.xp += amount;
   let leveled = '';
-  while(c.xp >= c.xpNext){
-    c.xp -= c.xpNext;
+  while(c.level < 20 && c.xp >= XP_THRESHOLDS[c.level]){
     c.level++;
-    c.xpNext = Math.floor(c.xpNext * 1.4);
+    c.proficiencyBonus = PROF_BONUS_BY_LEVEL(c.level);
     const gained = Math.max(1, rollDie(CLASSES[c.cls].hitDie) + mod(c.stats.CON));
     c.maxHp += gained;
     c.hp = c.maxHp;
+    c.hitDice.total = c.level;
+    c.hitDice.remaining = Math.min(c.hitDice.total, c.hitDice.remaining + 1);
+    c.xpNext = c.level < 20 ? XP_THRESHOLDS[c.level] : null;
     leveled += ' '+c.name+' sube a nivel '+c.level+'!';
     pushDM(party, 'nivel');
   }
+  if(c.level < 20) c.xpNext = XP_THRESHOLDS[c.level];
   if(item) c.inventory.push(item);
   return leveled.trim();
 }
@@ -511,7 +551,10 @@ function gainXpAndItem(party, playerId, amount, item){
 function damagePlayer(party, playerId, dmg){
   const c = party.characters[playerId];
   if(!c) return 0;
+  ensureCharacterRules(c);
+  if(c.temporaryHp>0){ const absorbed=Math.min(c.temporaryHp,dmg); c.temporaryHp-=absorbed; dmg-=absorbed; }
   c.hp = Math.max(0, c.hp - dmg);
+  if(c.hp<=0) c.conditions = Array.from(new Set([...(c.conditions||[]),'inconsciente']));
   return c.hp;
 }
 
@@ -553,22 +596,32 @@ function resolveEnemyIfCurrent(party, sc){
     if(!entry) return;
     if(entry.type==='player'){
       const c = party.characters[entry.id];
-      if(sc.fledIds.includes(entry.id) || !c || c.hp<=0){
-        sc.combatIdx = (sc.combatIdx+1) % sc.combatOrder.length;
-        guard++; continue;
+      if(sc.fledIds.includes(entry.id) || !c){
+        sc.combatIdx = (sc.combatIdx+1) % sc.combatOrder.length; guard++; continue;
       }
-      return; // le toca a un jugador presente y consciente -> se detiene aca, esperando su accion
+      ensureCharacterRules(c);
+      if(c.hp<=0){
+        if(c.deathSaves.failures>=3 || c.deathSaves.successes>=3){
+          sc.combatIdx=(sc.combatIdx+1)%sc.combatOrder.length; guard++; continue;
+        }
+        const ds=rollDie(20);
+        if(ds===20){ c.hp=1; c.deathSaves={successes:0,failures:0}; c.conditions=(c.conditions||[]).filter(x=>x!=='inconsciente'); pushLog(party,'ok',c.name+' obtiene 20 natural en su salvación de muerte y recupera 1 PV.'); return; }
+        if(ds===1) c.deathSaves.failures=Math.min(3,c.deathSaves.failures+2);
+        else if(ds>=10) c.deathSaves.successes++;
+        else c.deathSaves.failures++;
+        pushLog(party,ds>=10?'sys':'bad',c.name+' hace salvación de muerte: d20('+ds+') — éxitos '+c.deathSaves.successes+'/3, fallos '+c.deathSaves.failures+'/3.');
+        if(c.deathSaves.successes>=3) pushLog(party,'sys',c.name+' queda estable, pero sigue inconsciente a 0 PV.');
+        if(c.deathSaves.failures>=3) pushLog(party,'bad',c.name+' muere tras acumular tres fallos de salvación de muerte.');
+        sc.combatIdx=(sc.combatIdx+1)%sc.combatOrder.length; guard++; continue;
+      }
+      return; // le toca a un jugador consciente
     }
     // turno del enemigo: solo puede atacar a jugadores presentes, no huidos, y conscientes
     const targets = sc.combatOrder.filter(e=>e.type==='player' && !sc.fledIds.includes(e.id) && party.characters[e.id] && party.characters[e.id].hp>0);
     if(!targets.length){
       const anyoneLeft = sc.combatOrder.some(e=>e.type==='player' && !sc.fledIds.includes(e.id));
       if(anyoneLeft){
-        // todo el grupo cayo inconsciente: para que el juego no quede trabado, se reaniman a duras penas
-        pushLog(party,'bad','Todo el grupo cae ante '+sc.enemy.name+'... pero tras un tenso respiro, logran reanimarse a duras penas con 1 punto de vida.');
-        sc.combatOrder.forEach(e=>{
-          if(e.type==='player'){ const pc=party.characters[e.id]; if(pc && pc.hp<=0) pc.hp = 1; }
-        });
+        pushLog(party,'bad','Todo el grupo está a 0 PV. El combate termina en derrota; los personajes conservan el estado de sus salvaciones de muerte.');
       } else {
         pushLog(party,'sys','El grupo se retira y pierde de vista al enemigo.');
       }
@@ -579,7 +632,7 @@ function resolveEnemyIfCurrent(party, sc){
     const tChar = party.characters[target.id];
     const roll = rollDie(20);
     const total = roll + sc.enemy.atk;
-    const hit = total >= tChar.ac;
+    const hit = roll===1 ? false : (roll===20 ? true : total >= tChar.ac);
     pushLog(party, hit?'bad':'sys', sc.enemy.name+' ataca a '+tChar.name+': d20('+roll+')+'+sc.enemy.atk+' = '+total+' vs CA '+tChar.ac+' -> '+(hit?'golpea':'falla'));
     if(hit){
       let dmg = sc.enemy.dmg.length===3 ? rollDie(sc.enemy.dmg[1])+sc.enemy.dmg[2] : rollDie(sc.enemy.dmg[1]);
@@ -717,6 +770,13 @@ async function startTurnForPlayer(party, playerId){
   if(!myChar) return { error: 'No tenes personaje publicado en esta fiesta.' };
   if(myChar.hp <= 0) return { error: 'Estas caido — necesitas que te reanimen antes de poder explorar.' };
 
+  if(!party.prologueShown){
+    party.prologueShown = true;
+    pushLog(party,'dm','La mañana abre sobre la plaza de Valdora: puestos de fruta, herreros, niños corriendo junto a la fuente y viajeros entrando por la puerta sur. Entonces la campana de la torre suena tres veces. Nadie está tirando de la cuerda.');
+    pushLog(party,'dm','La alcaldesa Mara Venn los reúne frente a la fuente y coloca sobre la piedra un medallón dorado partido por la mitad. «Era de Ser Aldren, el último vigía de la Cripta del Alba. Desapareció hace dos noches. Tres vecinos también faltan. Quiero que sigan su rastro, encuentren a Aldren y averigüen qué está ocurriendo bajo esas colinas.»');
+    pushLog(party,'dm','Junto al medallón hay una nota de Aldren: «Si las campanas suenan sin manos, buscad lo que la Orden quiso olvidar». Con esa única pista, la fiesta abandona la plaza y toma el viejo camino hacia las colinas. Al caer la tarde, la entrada de la cripta aparece entre la niebla.');
+  }
+
   // la posicion "actual" de la fiesta es la de cualquier personaje ya ubicado (todos deberian coincidir)
   const placedPositions = Object.values(party.characters).map(c=>c.mapPos).filter(v=>typeof v==='number' && v>=0);
   const currentSharedPos = placedPositions.length ? placedPositions[0] : -1;
@@ -734,6 +794,16 @@ async function startTurnForPlayer(party, playerId){
   pushPlotMilestone(party, nextMapPos);
   pushDM(party, scene.type);
   pushItemSuggestion(party, scene, presentIds);
+  // Percepción pasiva: detectar un peligro oculto no consume acción ni requiere que el jugador pida una tirada.
+  if(scene.type==='trampa' && scene.dc){
+    const observers = presentIds.map(id=>party.characters[id]).filter(Boolean);
+    const best = observers.sort((a,b)=>passivePerception(b)-passivePerception(a))[0];
+    if(best && passivePerception(best) >= scene.dc){
+      scene.detected = true;
+      scene.dcReduction = (scene.dcReduction||0) + 2;
+      pushLog(party,'dm',best.name+' detecta algo raro antes de que nadie avance: su Percepción pasiva ('+passivePerception(best)+') revela señales del peligro. La trampa aún debe evitarse o desactivarse, pero ya no los toma por sorpresa.');
+    }
+  }
   party.status = scene.type==='combate' ? 'combat' : 'event';
   party.currentScene = scene;
   party.totalRooms = (party.totalRooms||0) + 1;
@@ -757,7 +827,7 @@ async function startTurnForPlayer(party, playerId){
   return { ok:true };
 }
 
-function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail){
+function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail, skill, difficulty){
   const myChar = party.characters[playerId];
   if(!myChar) return { error:'No tenes personaje publicado.' };
   const sc = party.currentScene;
@@ -776,14 +846,15 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
 
   if(kind==='investigate_custom'){
     if(sc.type==='combate' || sc.type==='bifurcacion') return { error:'No podes investigar de esa forma ahora mismo.' };
+    const chosenSkill = SKILLS[skill] ? skill : 'investigation';
+    const dc = DIFFICULTY_DC[difficulty] || 15;
     const roll = resolveRoll(clientRoll);
-    const rk = rollKind(roll);
-    const modVal = mod(myChar.stats.INT);
-    let success;
-    if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=13;
-    const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
+    const modVal = skillBonus(myChar, chosenSkill);
+    const total = roll + modVal;
+    // En ability checks un 1/20 natural NO es fallo/exito automatico: se compara el total con la CD.
+    const success = total >= dc;
     const detailTxt = detail ? (' ('+String(detail).slice(0,140)+')') : '';
-    pushLog(party, success?'ok':'sys', myChar.name+' investiga por su cuenta'+detailTxt+':'+flair+' d20('+roll+')'+fmtMod(modVal)+' -> '+(success?'¡Encuentra algo!':'No nota nada fuera de lo comun.'));
+    pushLog(party, success?'ok':'sys', myChar.name+' intenta '+SKILLS[chosenSkill].name+detailTxt+': d20('+roll+')'+fmtMod(modVal)+' = '+total+' vs CD '+dc+' -> '+(success?'¡Éxito!':'Fallo.'));
     let resolvesScene = false;
     if(success){
       const pool = HIDDEN_FINDS[sc.type];
@@ -846,7 +917,7 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
     if(kind==='attack' || kind==='special'){
       const useSpecial = kind==='special';
       const cd = CLASSES[myChar.cls];
-      const atkStat = mod(myChar.stats[cd.primary]);
+      const atkStat = attackBonus(myChar, cd);
       const enemy = sc.enemy;
       let hit = true, dmg = 0;
       let healOnly = false;
@@ -883,10 +954,10 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
           if(rk==='fumble' && !autoHit) hit = false;
           else if(rk==='crit' || autoHit) hit = true;
           else hit = (roll+atkStat) >= enemy.ac;
-          if(myChar.cls==='monje'){ dmg = rollDie(6)+rollDie(6)+atkStat; }
+          if(myChar.cls==='monje'){ dmg = rollDie(6)+rollDie(6)+mod(myChar.stats[cd.primary]); }
           else {
             const wDie = cd.weaponDie || 8;
-            dmg = rollDie(wDie) + atkStat + (myChar.cls==='guerrero'?4:0) + (myChar.cls==='paladin'?4:0) + (rk==='crit'?rollDie(wDie):0);
+            dmg = rollDie(wDie) + mod(myChar.stats[cd.primary]) + (myChar.cls==='guerrero'?4:0) + (myChar.cls==='paladin'?4:0) + (rk==='crit'?rollDie(wDie):0);
           }
           if(myChar.cls==='picaro' && !sc.firstStrikeUsed) dmg *= 2;
           const flair = rk==='crit' ? ' ¡GOLPE CRITICO!' : (rk==='fumble' && !autoHit ? ' ¡PIFIA NATURAL!' : '');
@@ -913,7 +984,7 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
         }
         if(hit){
           const wDie = cd.weaponDie || 8;
-          dmg = rollDie(wDie) + atkStat + (rk==='crit' ? rollDie(wDie) : 0);
+          dmg = rollDie(wDie) + mod(myChar.stats[cd.primary]) + (rk==='crit' ? rollDie(wDie) : 0);
           if(rk==='crit') pushLog(party,'ok','El critico duplica el dado de daño!');
           if(myChar.cls==='picaro' && !sc.firstStrikeUsed){ dmg*=2; pushLog(party,'ok','Golpe Furtivo: daño duplicado!'); }
           pushLog(party,'ok', myChar.name+' inflige '+dmg+' de daño con su '+cd.weapon.toLowerCase()+'.');
@@ -1006,7 +1077,7 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
       const modVal = mod(myChar.stats.INT);
       const dcKey = Math.max(5, 13 - (sc.dcReduction||0));
       let success;
-      if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=dcKey;
+      success=(roll+modVal)>=dcKey;
       const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
       pushLog(party, success?'ok':'bad', myChar.name+' busca la llave:'+flair+' d20('+roll+')'+fmtMod(modVal)+' vs CD '+dcKey+' -> '+(success?'La encuentra!':'No la encuentra.'));
       if(success){
@@ -1024,7 +1095,7 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
       const modVal = mod(myChar.stats.FUE);
       const dcDoor = Math.max(5, 14 - (sc.dcReduction||0));
       let success;
-      if(rk==='fumble') success=false; else if(rk==='crit') success=true; else success=(roll+modVal)>=dcDoor;
+      success=(roll+modVal)>=dcDoor;
       const flair = rk==='crit' ? ' ¡NATURAL 20!' : (rk==='fumble' ? ' ¡PIFIA NATURAL!' : '');
       pushLog(party, success?'ok':'bad', myChar.name+' fuerza la puerta:'+flair+' d20('+roll+')'+fmtMod(modVal)+' vs CD '+dcDoor+' -> '+(success?'Cede de un golpe!':'No cede.'));
       if(success){
@@ -1061,8 +1132,6 @@ function doAction(party, playerId, kind, clientRoll, targetId, itemName, detail)
     const total = roll+modVal;
     let success;
     if(sc.autoSucceed) success=true;
-    else if(rk==='fumble') success=false;
-    else if(rk==='crit') success=true;
     else success = total >= dc;
     const guaranteedNote = sc.autoSucceed ? ' (ya sabias exactamente que hacer — exito garantizado)' : '';
     sc.autoSucceed = false; // se consume, es un efecto de una sola vez
@@ -1114,6 +1183,7 @@ io.on('connection', (socket)=>{
     code = sanitizeCode(code);
     const party = getParty(code);
     const existing = party.characters[playerId];
+    ensureCharacterRules(character);
     character.playerId = playerId;
     character.mapPos = existing ? existing.mapPos : -1;
     character.lastRoomType = existing ? existing.lastRoomType : null;
@@ -1140,10 +1210,10 @@ io.on('connection', (socket)=>{
     broadcastParty(code);
   });
 
-  socket.on('action', ({code, playerId, kind, clientRoll, targetId, itemName, detail})=>{
+  socket.on('action', ({code, playerId, kind, clientRoll, targetId, itemName, detail, skill, difficulty})=>{
     code = sanitizeCode(code);
     const party = getParty(code);
-    const result = doAction(party, playerId, kind, clientRoll, targetId, itemName, detail);
+    const result = doAction(party, playerId, kind, clientRoll, targetId, itemName, detail, skill, difficulty);
     if(result.error){ socket.emit('action_error', result.error); return; }
     broadcastParty(code);
   });
@@ -1266,12 +1336,12 @@ io.on('connection', (socket)=>{
         const c = party.characters[playerId];
         if(c){
           const cd = CLASSES[c.cls];
-          charInfo = { cls: c.cls, weapon: cd ? cd.weapon : null, inventory: c.inventory };
+          ensureCharacterRules(c); charInfo = { cls: c.cls, weapon: cd ? cd.weapon : null, inventory: c.inventory, passivePerception:c.passivePerception };
         }
       }
       const result = await classifyPlayerIntent(text, options, scene, charInfo);
       console.log('[classify_intent] texto="'+String(text).slice(0,80)+'" escena='+(scene&&scene.type)+' opciones=['+options.map(o=>o.kind).join(',')+'] arma='+(charInfo&&charInfo.weapon)+' -> kind="'+result.kind+'" narracion="'+String(result.narration||'').slice(0,80)+'"');
-      ack({ disabled:false, kind: result.kind, narration: result.narration });
+      ack({ disabled:false, kind: result.kind, narration: result.narration, skill:result.skill, difficulty:result.difficulty });
     } catch(err){
       console.error('classify_intent error:', err.message);
       ack({ disabled:false, error:true });

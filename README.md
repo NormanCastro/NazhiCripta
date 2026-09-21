@@ -164,3 +164,14 @@ cripta-nazhi-app/
     ├── style.css      → estilos
     └── app.js         → lógica del cliente (personaje, fiesta, chat, aventura)
 ```
+
+## v31 - reglas base D&D 5e (Basic Rules 2018)
+- PV iniciales corregidos: dado de golpe máximo + modificador de Constitución (sin +4 artificial).
+- Bonificador de competencia por nivel y competencia aplicada a tiradas de ataque.
+- El bonificador de competencia no se suma al daño del arma.
+- CA inicial calculada según el perfil de armadura de la clase en vez de un +1/+2 genérico.
+- Añadidos iniciativa, velocidad, percepción pasiva, 18 habilidades, 6 salvaciones, dados de golpe, PV temporales, condiciones y salvaciones de muerte al estado del personaje.
+- 20/1 natural automático se limita a ataques; las pruebas de característica comparan total contra CD.
+- Salvaciones de muerte: 10+ éxito, 9- fallo, 1 natural = 2 fallos, 20 natural = 1 PV.
+- Progresión de XP actualizada a los umbrales de niveles 1-20 de las Basic Rules.
+- Se mantienen razas, clases y habilidades especiales caseras ya existentes en Cripta de Nazhi; no forman parte necesariamente del PDF Basic Rules.

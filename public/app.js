@@ -22,6 +22,45 @@ const CLASSES = {
 const ROOM_ICON = { combate:'⚔', social:'💬', exploracion:'🧭', trampa:'⚠', hallazgo:'💰', puerta:'🚪' };
 const ABILS = ['FUE','DES','CON','INT','SAB','CAR'];
 const ABIL_LABEL = {FUE:'Fuerza',DES:'Destreza',CON:'Constitucion',INT:'Inteligencia',SAB:'Sabiduria',CAR:'Carisma'};
+const PROF_BONUS_BY_LEVEL = lvl => 2 + Math.floor((Math.max(1,lvl)-1)/4);
+const SKILLS = {
+  acrobatics:{name:'Acrobacias',abil:'DES'}, animalHandling:{name:'Trato con animales',abil:'SAB'}, arcana:{name:'Arcana',abil:'INT'},
+  athletics:{name:'Atletismo',abil:'FUE'}, deception:{name:'Engaño',abil:'CAR'}, history:{name:'Historia',abil:'INT'},
+  insight:{name:'Perspicacia',abil:'SAB'}, intimidation:{name:'Intimidación',abil:'CAR'}, investigation:{name:'Investigación',abil:'INT'},
+  medicine:{name:'Medicina',abil:'SAB'}, nature:{name:'Naturaleza',abil:'INT'}, perception:{name:'Percepción',abil:'SAB'},
+  performance:{name:'Interpretación',abil:'CAR'}, persuasion:{name:'Persuasión',abil:'CAR'}, religion:{name:'Religión',abil:'INT'},
+  sleightOfHand:{name:'Juego de manos',abil:'DES'}, stealth:{name:'Sigilo',abil:'DES'}, survival:{name:'Supervivencia',abil:'SAB'}
+};
+const CLASS_RULES = {
+  guerrero:{saves:['FUE','CON'], skills:['athletics','intimidation'], armor:'heavyShield'},
+  mago:{saves:['INT','SAB'], skills:['arcana','investigation'], armor:'none'},
+  picaro:{saves:['DES','INT'], skills:['stealth','sleightOfHand','investigation','perception'], armor:'light'},
+  clerigo:{saves:['SAB','CAR'], skills:['medicine','religion'], armor:'mediumShield'},
+  barbaro:{saves:['FUE','CON'], skills:['athletics','survival'], armor:'unarmoredCon'},
+  explorador:{saves:['FUE','DES'], skills:['perception','survival','stealth'], armor:'light'},
+  paladin:{saves:['SAB','CAR'], skills:['athletics','persuasion'], armor:'heavyShield'},
+  bardo:{saves:['DES','CAR'], skills:['performance','persuasion','deception'], armor:'light'},
+  druida:{saves:['INT','SAB'], skills:['nature','perception'], armor:'lightShield'},
+  monje:{saves:['FUE','DES'], skills:['acrobatics','insight'], armor:'unarmoredWis'}
+};
+function speedForRace(r){ return (r==='enano'||r==='mediano') ? 25 : 30; }
+function acForCharacter(cls, stats){
+  const dex=mod(stats.DES), con=mod(stats.CON), wis=mod(stats.SAB), armor=(CLASS_RULES[cls]||{}).armor;
+  if(armor==='heavyShield') return 18;
+  if(armor==='mediumShield') return 16 + Math.min(2,dex);
+  if(armor==='lightShield') return 13 + dex;
+  if(armor==='light') return 11 + dex;
+  if(armor==='unarmoredCon') return 10 + dex + con;
+  if(armor==='unarmoredWis') return 10 + dex + wis;
+  return 10 + dex;
+}
+function buildDerived(cls, stats, race, level=1){
+  const rules=CLASS_RULES[cls]||{saves:[],skills:[]}, prof=PROF_BONUS_BY_LEVEL(level);
+  const skills={}; Object.entries(SKILLS).forEach(([k,v])=>skills[k]=mod(stats[v.abil])+(rules.skills.includes(k)?prof:0));
+  const saves={}; ABILS.forEach(a=>saves[a]=mod(stats[a])+(rules.saves.includes(a)?prof:0));
+  return {proficiencyBonus:prof, initiative:mod(stats.DES), speed:speedForRace(race), skills, savingThrows:saves,
+    passivePerception:10+skills.perception, skillProficiencies:rules.skills.slice(), savingThrowProficiencies:rules.saves.slice()};
+}
 const ORIGENES = [
   'crecio entre las callejuelas de un puerto comerciante, aprendiendo a sobrevivir con ingenio',
   'fue criado en un monasterio remoto, entre disciplina y silencio',
@@ -166,10 +205,13 @@ document.getElementById('createCharBtn').addEventListener('click', ()=>{
   state = {
     race: selRace, cls: selClass, stats: rolledStats,
     name: document.getElementById('charName').value.trim(), story: generatedStory,
-    level:1, xp:0, xpNext:100,
-    maxHp: clsData.hitDie + conMod + 4,
-    hp: clsData.hitDie + conMod + 4,
-    ac: 10 + mod(rolledStats.DES) + (selClass==='guerrero'?2:1),
+    level:1, xp:0, xpNext:300,
+    maxHp: Math.max(1, clsData.hitDie + conMod),
+    hp: Math.max(1, clsData.hitDie + conMod),
+    ac: acForCharacter(selClass, rolledStats),
+    ...buildDerived(selClass, rolledStats, selRace, 1),
+    hitDice:{die:clsData.hitDie,total:1,remaining:1},
+    temporaryHp:0, deathSaves:{successes:0,failures:0}, conditions:[],
     inventory: ['Raciones de viaje','Antorcha','Cuerda (15m)']
   };
   saveLocalChar();
@@ -209,6 +251,11 @@ function renderSheet(){
     '<p>'+state.story+'</p>'+
     '<div class="stat-row"><span>Vida</span><span class="stat-val">'+state.hp+' / '+state.maxHp+'</span></div>'+
     '<div class="stat-row"><span>Clase de Armadura</span><span class="stat-val">'+state.ac+'</span></div>'+
+    '<div class="stat-row"><span>Competencia</span><span class="stat-val">'+fmtMod(state.proficiencyBonus||2)+'</span></div>'+
+    '<div class="stat-row"><span>Iniciativa</span><span class="stat-val">'+fmtMod(state.initiative||0)+'</span></div>'+
+    '<div class="stat-row"><span>Velocidad</span><span class="stat-val">'+(state.speed||30)+' pies</span></div>'+
+    '<div class="stat-row"><span>Percepción pasiva</span><span class="stat-val">'+(state.passivePerception||10)+'</span></div>'+
+    '<div class="stat-row"><span>Dados de golpe</span><span class="stat-val">'+((state.hitDice&&state.hitDice.remaining)||1)+'d'+((state.hitDice&&state.hitDice.die)||c.hitDie)+'</span></div>'+
     '<div class="stat-row"><span>Experiencia</span><span class="stat-val">'+state.xp+' / '+state.xpNext+'</span></div>'+
     '<h4 style="margin-top:12px;">Atributos</h4>'+statsHtml+
     '<h4 style="margin-top:12px;">Habilidad especial</h4><p class="small-note">'+c.special+'</p>'+
@@ -322,8 +369,9 @@ document.getElementById('diceRollBtn').addEventListener('click', ()=>{
 
   let flair = '';
   if(die===20 && (qty===1 || pendingAction)){
-    if(effective===20) flair = '<div class="roll-highlight">¡NATURAL 20 — CRITICO!</div>';
-    else if(effective===1) flair = '<div style="color:var(--accent);font-weight:bold;">¡NATURAL 1 — PIFIA!</div>';
+    const isAbilityCheck = pendingAction && pendingAction.kind==='investigate_custom';
+    if(effective===20) flair = '<div class="roll-highlight">'+(isAbilityCheck?'20 NATURAL — se suma el modificador':'¡NATURAL 20 — CRITICO!')+'</div>';
+    else if(effective===1) flair = '<div style="color:var(--accent);font-weight:bold;">'+(isAbilityCheck?'1 NATURAL — se suma el modificador':'¡NATURAL 1 — PIFIA!')+'</div>';
     renderDiceBox(effective);
   }
   document.getElementById('diceResult').innerHTML =
@@ -335,9 +383,11 @@ document.getElementById('diceRollBtn').addEventListener('click', ()=>{
   if(pendingAction){
     const kind = pendingAction.kind;
     const detail = pendingAction.detail;
+    const skill = pendingAction.skill;
+    const difficulty = pendingAction.difficulty;
     clearPendingAction();
     dicePanel.classList.add('hidden');
-    sendActionWithRoll(kind, effective, detail);
+    sendActionWithRoll(kind, effective, detail, skill, difficulty);
   }
 });
 
@@ -426,7 +476,11 @@ document.getElementById('publishCharBtn').addEventListener('click', ()=>{
   const character = {
     name: state.name, race: state.race, cls: state.cls, stats: state.stats,
     level: state.level, xp: state.xp, xpNext: state.xpNext,
-    maxHp: state.maxHp, hp: state.hp, ac: state.ac,
+    maxHp: state.maxHp, hp: state.hp, ac: state.ac, temporaryHp:state.temporaryHp||0,
+    proficiencyBonus:state.proficiencyBonus, initiative:state.initiative, speed:state.speed,
+    passivePerception:state.passivePerception, skills:state.skills, savingThrows:state.savingThrows,
+    skillProficiencies:state.skillProficiencies, savingThrowProficiencies:state.savingThrowProficiencies,
+    hitDice:state.hitDice, deathSaves:state.deathSaves, conditions:state.conditions||[],
     inventory: state.inventory.slice(), story: state.story
   };
   socket.emit('publish_character', {code: currentCode, playerId, character});
@@ -592,7 +646,7 @@ function tryMatchIntent(text){
       }
       if(res && res.disabled){ aiDmAvailable = false; }
       if(res && !res.disabled && !res.error && res.kind==='investigate_custom'){
-        investigateCustom(text, hint, res.narration);
+        investigateCustom(text, hint, res.narration, res.skill, res.difficulty);
         return;
       }
       if(res && !res.disabled && !res.error && res.kind && res.kind!=='none'){
@@ -615,11 +669,13 @@ function tryMatchIntent(text){
   runLocalKeywordMatch(norm, availableButtons, p, myChar, isCombat, hint);
 }
 
-function investigateCustom(text, hint, narration){
+function investigateCustom(text, hint, narration, skill, difficulty){
   // no hay boton para esto: es una accion creativa que solo la IA puede reconocer.
   // dispara la tirada de siempre (INT), y el servidor decide si encuentra algo oculto.
-  pendingAction = { kind:'investigate_custom', adv:'normal', detail: text };
-  const relevantMod = computeRelevantMod('investigate_custom');
+  const chosenSkill = (skill && SKILLS[skill]) ? skill : 'investigation';
+  const difficultyName = difficulty || 'medium';
+  const relevantMod = (myChar && myChar.skills && Number.isFinite(myChar.skills[chosenSkill])) ? myChar.skills[chosenSkill] : computeRelevantMod('investigate_custom');
+  pendingAction = { kind:'investigate_custom', adv:'normal', detail:text, skill:chosenSkill, difficulty:difficultyName };
   selDie = 20;
   diceTypeGrid.querySelectorAll('button').forEach(x=>x.classList.remove('sel'));
   diceTypeGrid.querySelectorAll('button')[5].classList.add('sel');
@@ -630,7 +686,7 @@ function investigateCustom(text, hint, narration){
   diceFab.classList.add('glow');
   dicePanel.classList.remove('hidden');
   const prefix = narration ? '🎙️ '+narration+' ' : '';
-  document.getElementById('diceResult').innerHTML = '<p>'+prefix+'Tirá el D20 para ver si encontras algo (Inteligencia, modificador '+fmtMod(relevantMod)+').</p>';
+  document.getElementById('diceResult').innerHTML = '<p>'+prefix+'Tirá el D20 para resolver '+SKILLS[chosenSkill].name+' (modificador '+fmtMod(relevantMod)+').</p>';
   const hintPrefix = narration ? '🎙️ '+narration+' ' : '';
   hint.textContent = hintPrefix+'💡 Eso suena a algo que vale la pena investigar — el D20 esta brillando, tocalo para intentarlo.';
   hint.classList.remove('hidden');
@@ -1226,9 +1282,9 @@ function sendAction(kind){
   socket.emit('action', {code: currentCode, playerId, kind});
 }
 
-function sendActionWithRoll(kind, clientRoll, detail){
+function sendActionWithRoll(kind, clientRoll, detail, skill, difficulty){
   if(!currentCode) return;
-  socket.emit('action', {code: currentCode, playerId, kind, clientRoll, detail});
+  socket.emit('action', {code: currentCode, playerId, kind, clientRoll, detail, skill, difficulty});
 }
 
 function renderUnifiedFeed(){
